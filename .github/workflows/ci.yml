@@ -31,7 +31,7 @@ jobs:
           POSTGRES_DB: research
         ports: ['5432:5432']
         options: >-
-          --health-cmd 'pg_isready -U research -d research'
+          --health-cmd "pg_isready -U research -d research"
           --health-interval 5s --health-timeout 3s --health-retries 20
     env:
       EVIDENCEHARBOR_TEST_POSTGRES: postgresql+psycopg://research:ephemeral-ci-only@127.0.0.1:5432/research
