@@ -6,8 +6,8 @@ Validated on 2026-10-04 UTC against the current local FastAPI implementation, us
 
 - `npm run typecheck`: strict TypeScript check
 - `npm run build`: Next.js 16.3.8 optimized standalone build
-- `npm test`: 16 component-rendering and source-security tests
-- `bash scripts/integration.sh`: 20 real HTTP checks through the production Next proxy to FastAPI
+- `npm test`: 21 component-rendering and source-security tests
+- `bash scripts/integration.sh`: 23 real HTTP checks through the production Next proxy to FastAPI
 - `npm audit --omit=dev`: 0 reported production vulnerabilities, including 0 high and 0 critical
 
 ### Component and security coverage
@@ -70,3 +70,9 @@ Source-watch configuration has been strengthened to be offline-safe and is cover
 ### Exact Unicode evidence anchors
 
 The reader passes the saved evidence's block-local `start_offset` through to quote highlighting. It treats that value as Unicode code points, converts the prefix with `Array.from(text)` to obtain the correct UTF-16 position, and verifies the exact quote there. Repeated identical quotes therefore resolve to the stored occurrence, including after emoji, supplementary CJK and combining marks. An invalid explicit offset produces no quote highlight; first-match lookup is used only when no offset is supplied. Four targeted anchor tests cover these cases.
+
+## Scholarly and raw-archive UI follow-on
+
+Separate paginated scholarly leads show metadata/abstract/fulltext-available scope without implying papers were read. Detail views preserve provider originals, provenance, immutable review history and editor-only CAS corrections. Failed parses expose retained capture inspection and original downloads without a ready document. The additional real proxy cases cover 1,000-record pagination, correction/history/CAS/role gates and failed-capture raw integrity.
+
+`tests/scholarly-flow.mjs` adds 10 interactive scenarios plus a browser-runtime-error check, invoked by the existing hosted browser step after `browser-flow.mjs`. It covers paging, safe text, corrections/conflicts, request errors/retry, raw download, mobile layout and interrupted navigation. Local Chromium still fails at launch in the managed authoring sandbox; these new interactive scenarios are pending the follow-on hosted run. The earlier backend release independently passed its original18 Chromium scenarios. No new UI screenshot is claimed until the hosted runner produces it.

@@ -75,9 +75,20 @@ def request(method: str, path: str, payload: dict | None = None) -> dict:
 
 
 @mcp.tool()
-def get_project_context(project_id: str) -> dict:
-    """Read project scope, report baseline, unresolved questions and available sources."""
-    return request("GET", f"/v1/projects/{resource_id(project_id)}")
+def get_project_context(
+    project_id: str,
+    offset: Annotated[int, Field(ge=0, le=1_000_000)] = 0,
+    limit: Annotated[int, Field(ge=1, le=50)] = 20,
+) -> dict:
+    """Read bounded project metadata, report baseline and per-collection pages, never full document text.
+
+    Each collection has counts and a next_offset. Use read_document with the returned
+    report/document version to inspect actual content; metadata does not count as reading.
+    """
+    path = f"/v1/projects/{resource_id(project_id)}/context"
+    if type(offset) is not int or not 0 <= offset <= 1_000_000 or type(limit) is not int or not 1 <= limit <= 50:
+        raise ValueError("Invalid context pagination")
+    return request("GET", path + "?" + urlencode({"offset": offset, "limit": limit}))
 
 
 @mcp.tool()

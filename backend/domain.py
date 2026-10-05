@@ -1670,8 +1670,23 @@ def document_read_range(result, *, start=None, limit=8000, block_id=None):
                 "truncated": local_start != 0 or local_end != len(block["text"]),
             },
         })
+    projection = dict(result)
+    projection["title"] = result.get("title", "")[:1000]
+    projection["title_length"] = len(result.get("title", ""))
+    if result.get("capture"):
+        capture = result["capture"]
+        projection["capture"] = {key: value for key, value in capture.items() if key != "metadata_json"}
+        projection["capture"]["metadata_json"] = {
+            key: value for key, value in capture.get("metadata_json", {}).items()
+            if key in {"content_scope", "scope_basis", "archived_before_processing"}
+        }
+        projection["capture"]["metadata_omitted"] = True
+    if "evidence_ids" in result:
+        projection["evidence_ids"] = result["evidence_ids"][:100]
+        projection["evidence_count"] = len(result["evidence_ids"])
+        projection["evidence_ids_truncated"] = len(result["evidence_ids"]) > 100
     return {
-        **result,
+        **projection,
         "content": text[start:end],
         "blocks": visible,
         "reading_range": {

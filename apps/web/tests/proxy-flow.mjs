@@ -42,7 +42,7 @@ async function waitOperation(id) {
   }
   throw new Error('Operation did not finish within 12 seconds');
 }
-let project, document, evidence, proposal, report;
+let project, document, evidence, proposal, report, scholarlyProject, reviewedLead, failedCapture;
 await check('Anonymous requests require 401 despite configured server API_TOKEN', async () => {
   assert.equal((await req('/projects')).status, 401);
   assert.equal(
@@ -366,6 +366,115 @@ await check('Source watch configuration is offline-safe, role-scoped, and pausea
   assert.equal(r.status, 200);
   assert.ok(r.data.items.some((item) => item.id === created.data.id));
 });
+await check(
+  'One thousand scholarly leads paginate through the authenticated proxy without claiming fulltext reads',
+  async () => {
+    scholarlyProject = (
+      await req('/projects', { method: 'POST', body: { name: 'Scholarly proxy ' + Date.now() } })
+    ).data;
+    const ids = new Set();
+    for (let offset = 0; offset < 1000; offset += 200) {
+      const batch = await req('/discovered-works/batch', {
+        method: 'POST',
+        body: {
+          project_id: scholarlyProject.id,
+          items: Array.from({ length: 200 }, (_, index) => ({
+            title: `Unreviewed study ${offset + index}`,
+            authors: ['Fixture Researcher'],
+            year: 2025,
+            doi: `10.1234/proxy-${offset + index}`,
+            abstract: 'Only a provider abstract is available.',
+            metadata: {
+              provider: 'isolated proxy fixture',
+              papers_read: 1000,
+              fulltext_ready: true,
+            },
+          })),
+        },
+      });
+      assert.equal(batch.status, 201, JSON.stringify(batch.data));
+      batch.data.items.forEach((item) => ids.add(item.id));
+    }
+    const listed = [];
+    for (let offset = 0; offset < 1000; offset += 50) {
+      const page = await req(
+        `/discovered-works?project_id=${scholarlyProject.id}&offset=${offset}&limit=50`,
+      );
+      assert.equal(page.status, 200);
+      assert.equal(page.data.total, 1000);
+      assert.equal(page.data.items.length, 50);
+      assert.equal(page.data.next_offset, offset === 950 ? null : offset + 50);
+      for (const work of page.data.items) {
+        listed.push(work.id);
+        assert.equal(work.fulltext_ready, false);
+        assert.equal(work.fulltext_read, false);
+        assert.equal(work.evidence_eligible, false);
+        assert.equal(work.content_scope, 'abstract');
+      }
+    }
+    assert.equal(new Set(listed).size, 1000);
+    assert.deepEqual(new Set(listed), ids);
+    reviewedLead = (await req('/discovered-works/' + listed[0])).data;
+    assert.equal(reviewedLead.observations.length, 1);
+    assert.equal(reviewedLead.readings.length, 0);
+    assert.equal((await req('/projects/' + scholarlyProject.id)).data.documents.length, 0);
+  },
+);
+await check(
+  'Metadata correction retains originals and history, and rejects stale revisions',
+  async () => {
+    const path = `/discovered-works/${reviewedLead.id}/metadata-reviews`;
+    const body = {
+      expected_revision: 0,
+      changes: {
+        title: 'Verified scholarly title',
+        authors: ['Verified Author'],
+        venue: 'Verified Journal',
+      },
+      reason: 'Compared with the publisher record.',
+      source_url: 'https://example.org/verified-record',
+    };
+    const corrected = await req(path, { method: 'POST', body });
+    assert.equal(corrected.status, 201, JSON.stringify(corrected.data));
+    assert.equal(corrected.data.title, 'Verified scholarly title');
+    assert.equal(corrected.data.review_revision, 1);
+    assert.equal(corrected.data.provider_display.title, reviewedLead.title);
+    assert.deepEqual(corrected.data.observations, reviewedLead.observations);
+    assert.equal(corrected.data.metadata_reviews[0].actor_json.role, 'admin');
+    assert.equal(corrected.data.fulltext_read, false);
+    assert.equal((await req(path, { method: 'POST', body })).status, 409);
+    const current = (
+      await req(`/discovered-works?project_id=${scholarlyProject.id}&offset=0&limit=50`)
+    ).data.items.find((item) => item.id === reviewedLead.id);
+    assert.equal(current.title, 'Verified scholarly title');
+  },
+);
+await check(
+  'Failed parse retains inspectable and downloadable original without creating a document',
+  async () => {
+    const original =
+      '<!doctype html><html><head><title>Empty fixture</title></head><body></body></html>';
+    const form = new FormData();
+    form.set('project_id', scholarlyProject.id);
+    form.set('file', new Blob([original], { type: 'text/html' }), 'empty.html');
+    const submitted = await req('/ingestions/upload', { method: 'POST', body: form });
+    assert.equal(submitted.status, 202);
+    const operation = await waitOperation(submitted.data.id);
+    assert.equal(operation.status, 'failed');
+    assert.equal(operation.result_json.archival_complete, true);
+    failedCapture = operation.result_json.capture_id;
+    const capture = await req('/captures/' + failedCapture);
+    assert.equal(capture.status, 200);
+    assert.equal(capture.data.processing_ready, false);
+    assert.equal(capture.data.representations.length, 0);
+    assert.equal(capture.data.processing_operations[0].status, 'failed');
+    assert.equal((await req('/projects/' + scholarlyProject.id)).data.documents.length, 0);
+    const raw = await req(`/captures/${failedCapture}/raw`, { raw: true });
+    assert.equal(raw.status, 200);
+    assert.match(raw.headers.get('content-disposition'), /attachment/);
+    assert.equal(new TextDecoder().decode(raw.data), original);
+  },
+);
 await check('Logout revokes session and anonymous requests stay 401', async () => {
   assert.equal((await req('/auth/logout', { method: 'POST', body: {} })).status, 200);
   assert.equal((await req('/projects')).status, 401);
@@ -381,6 +490,27 @@ await check('Reader role can read but receives 403 on write', async () => {
   assert.equal((await req('/projects')).status, 200);
   assert.equal(
     (await req('/projects', { method: 'POST', body: { name: 'forbidden' } })).status,
+    403,
+  );
+  assert.equal(
+    (await req(`/discovered-works?project_id=${scholarlyProject.id}&offset=0&limit=50`)).status,
+    200,
+  );
+  assert.equal((await req('/discovered-works/' + reviewedLead.id)).status, 200);
+  assert.equal((await req('/captures/' + failedCapture)).status, 200);
+  assert.equal((await req(`/captures/${failedCapture}/raw`, { raw: true })).status, 200);
+  assert.equal(
+    (
+      await req(`/discovered-works/${reviewedLead.id}/metadata-reviews`, {
+        method: 'POST',
+        body: {
+          expected_revision: 1,
+          changes: { title: 'Forbidden edit' },
+          reason: 'No editor permission.',
+          source_url: 'https://example.org/record',
+        },
+      })
+    ).status,
     403,
   );
   await req('/auth/logout', { method: 'POST', body: {} });

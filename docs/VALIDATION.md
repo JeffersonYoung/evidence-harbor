@@ -4,13 +4,13 @@ This record distinguishes executable product tests from unperformed deployment a
 
 ## Final local verification (2026-10-05)
 
-- Default Python collection: **421 tests: 407 passed, 14 skipped** (36.35 seconds). Skips: 7 PostgreSQL/pgvector, 5 Temporal, 2 live S3 tests; these are opt-in, not failures or passes
-- Separate real PostgreSQL17.11/pgvector0.8.0 + Temporal CLI1.9.1/Server1.32.0 runner: **29 passed** (54.40 seconds). This includes 12 opt-in database/Temporal tests and 17 tests also exercised by the default suite; do not add both counts as unique tests
-- Frontend component/security: **16 passed**; production Next-to-FastAPI HTTP scenarios: **20 passed**
+- Default Python collection: **426 tests: 412 passed, 14 skipped** (39.47 seconds). Skips: 7 PostgreSQL/pgvector, 5 Temporal, 2 live S3 tests; these are opt-in, not failures or passes
+- Separate real PostgreSQL17.11/pgvector0.8.0 + Temporal CLI1.9.1/Server1.32.0 runner: **29 passed** (54.72 seconds). This includes 12 opt-in database/Temporal tests and 17 tests also exercised by the default suite; do not add both counts as unique tests
+- Frontend component/security: **21 passed**; production Next-to-FastAPI HTTP scenarios: **23 passed**
 - Python agent-distribution tests: **3 passed**; OpenClaw Node tests: **3 passed**
 - Ruff, compileall, TypeScript, Next production build and Prettier checks: **passed**
 
-Final additions include durable scholarly discovery and reviewed metadata corrections, explicit abstract/fulltext scope, archive-before-parse failed-capture recovery, safe DOCX parsing, and replay-gated Temporal attempt/terminal lifecycle with real worker-loss recovery. Prior portable export and progressive-reading coverage is retained. The proxy partial-publication test was corrected to unlock/rebase the existing report with its current version, preserving the single-report/CAS contract. This is local verification, not remote GitHub CI or deployment acceptance. The baseline was published and passed hosted CI; this follow-on extension requires its own hosted run after publication.
+Final additions include durable scholarly discovery and reviewed metadata corrections, explicit abstract/fulltext scope, archive-before-parse failed-capture recovery, safe DOCX parsing, and replay-gated Temporal attempt/terminal lifecycle with real worker-loss recovery. Prior portable export and progressive-reading coverage is retained. The proxy partial-publication test was corrected to unlock/rebase the existing report with its current version, preserving the single-report/CAS contract. This is local verification, not remote GitHub CI or deployment acceptance. The backend release was published and passed hosted CI; the latest UI/context follow-on requires its own hosted run after publication.
 
 ## Executed
 
@@ -23,7 +23,7 @@ Final additions include durable scholarly discovery and reviewed metadata correc
 
 The counts above cover the final code revision; additional documentation and packaging changes do not assert a deployed service.
 
-The previously published baseline commit `3139396fb7bc7933f39cea6ea41cf58be0576bca` passed all four [hosted CI jobs](https://github.com/JeffersonYoung/evidence-harbor/actions/runs/37261347785), including 18 Chromium UI scenarios and 2 live S3 tests. Those results validate that baseline, not the newer scholarly/DOCX/lifecycle extension. This extension's hosted run is pending publication. Explicit service variables and named no-skip gates prevent unavailable integrations from silently producing green acceptance results.
+The backend extension commit `e29b89dffb536bc89d14c361da02df10a52fa07a` passed all four [hosted CI jobs](https://github.com/JeffersonYoung/evidence-harbor/actions/runs/37262828801), including 407 Python tests, 29 durable-suite tests, 18 Chromium UI scenarios and 2 live S3 tests. Those results validate the scholarly/DOCX/archive/lifecycle backend release. The newer unified scholarly UI and bounded project-context changes require a separate hosted run after publication. Explicit service variables and named no-skip gates prevent unavailable integrations from silently producing green acceptance results.
 
 ## Not executed / verified blockers
 

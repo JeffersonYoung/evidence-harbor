@@ -111,7 +111,7 @@ EVIDENCEHARBOR_API_TOKEN='researcher-role-token' \
 python -m backend.mcp_server
 ```
 
-Use researcher-role credentials for agents. MCP exposes source acquisition, search/read, exact evidence registration and proposals; document reads are bounded by default with version-pinned pagination and structural-block selection; it does not expose publication, schedule changes, arbitrary SQL/shell or credentials. See [agent integration instructions](docs/integrations/README.md).
+Use researcher-role credentials for agents. MCP exposes source acquisition, search/read, exact evidence registration and proposals; project context is bounded metadata, and document reads are bounded by default with version-pinned pagination and structural-block selection; it does not expose publication, schedule changes, arbitrary SQL/shell or credentials. See [agent integration instructions](docs/integrations/README.md).
 
 `python scripts/eh.py --help` is a REST CLI. `scripts/empirical_harness.py` runs the identical FastAPI routes in-process against a persistent external SQLite directory, useful when an evaluation environment isolates network namespaces. It migrates the database before each invocation, checks imported hashes, preserves declared provenance, resumes failed imports, and returns nonzero if any import fails. This harness is explicitly local/TestClient, not a substitute for PostgreSQL/Temporal integration tests.
 

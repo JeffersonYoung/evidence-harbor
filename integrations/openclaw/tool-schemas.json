@@ -74,12 +74,26 @@
   },
   {
     "name": "get_project_context",
-    "description": "Read project scope, report baseline, unresolved questions and available sources.",
+    "description": "Read bounded project metadata, report baseline and per-collection pages, never full document text.\n\n    Each collection has counts and a next_offset. Use read_document with the returned\n    report/document version to inspect actual content; metadata does not count as reading.\n    ",
     "inputSchema": {
       "properties": {
         "project_id": {
           "title": "Project Id",
           "type": "string"
+        },
+        "offset": {
+          "default": 0,
+          "maximum": 1000000,
+          "minimum": 0,
+          "title": "Offset",
+          "type": "integer"
+        },
+        "limit": {
+          "default": 20,
+          "maximum": 50,
+          "minimum": 1,
+          "title": "Limit",
+          "type": "integer"
         }
       },
       "required": [

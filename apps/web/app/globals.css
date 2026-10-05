@@ -3127,3 +3127,199 @@ mark {
 .raw-download:hover {
   text-decoration: underline;
 }
+
+/* Scholarly discovery is a separate, bounded catalogue from parsed documents. */
+.asset-tabs {
+  margin-bottom: 18px;
+}
+.scope-note {
+  padding: 13px 15px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #f3f6ed;
+  color: #566d47;
+  font-size: 12px;
+  line-height: 1.8;
+}
+.scope-note > svg {
+  margin-right: 6px;
+}
+.asset-page-heading,
+.asset-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.asset-page-heading .list-caption {
+  margin: 0;
+}
+.asset-page-heading {
+  margin-bottom: 14px;
+}
+.asset-pagination {
+  margin-top: 20px;
+  font-size: 12px;
+}
+.lead-list {
+  display: grid;
+  gap: 12px;
+}
+.lead-card {
+  padding: 19px 21px;
+  background: #fffefb;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  min-width: 0;
+}
+.lead-title {
+  display: flex;
+  width: 100%;
+  text-align: left;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 15px;
+  padding: 0;
+  color: var(--ink);
+}
+.lead-title strong {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.lead-title svg {
+  margin-top: 4px;
+}
+.lead-byline {
+  font-size: 12px;
+  color: #6b7e59;
+  margin: 7px 0 11px;
+  overflow-wrap: anywhere;
+}
+.asset-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.asset-chip {
+  display: inline-block;
+  padding: 3px 8px;
+  border: 1px solid #e1e6d8;
+  border-radius: 5px;
+  font-size: 11px;
+  color: #68774f;
+  background: #f7f7ee;
+}
+.asset-ready {
+  background: #eaf2e6;
+  border-color: #cfdcc4;
+  color: #416b39;
+}
+.asset-review-status {
+  color: #6d7e5d;
+  font-size: 11px;
+  margin: 10px 0 0;
+}
+.asset-detail {
+  min-width: 0;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.asset-detail > .scope-note {
+  margin-top: 15px;
+}
+.asset-detail h3 {
+  margin: 22px 0 10px;
+}
+.asset-metadata {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 9px 13px;
+  margin: 18px 0;
+}
+.asset-metadata dt {
+  color: #718463;
+}
+.asset-metadata dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.asset-id {
+  overflow-wrap: anywhere;
+  font-size: 11px;
+}
+.asset-history {
+  margin: 16px 0;
+  border-top: 1px solid var(--line);
+  padding-top: 13px;
+}
+.asset-history > summary {
+  cursor: pointer;
+  color: #4c6740;
+  padding: 4px 0;
+  font-weight: 500;
+}
+.asset-history > summary:focus-visible {
+  outline: 2px solid #528d7d;
+  outline-offset: 3px;
+}
+.asset-history pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 11px;
+  max-height: 360px;
+  overflow: auto;
+  padding: 14px;
+  background: #f5f7f0;
+  border-radius: 6px;
+}
+.asset-history .safe-text {
+  max-height: 420px;
+  overflow: auto;
+  margin-top: 12px;
+}
+.asset-history-item {
+  border-left: 2px solid #dce6d0;
+  padding: 12px 15px;
+  margin: 13px 0;
+}
+.asset-history-item p {
+  margin: 9px 0;
+}
+.asset-section {
+  margin-top: 24px;
+}
+.asset-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 15px;
+}
+.metadata-review-form {
+  margin-top: 17px;
+}
+.archived-operation {
+  margin: 16px 0;
+  color: #5b714c;
+}
+@media (max-width: 640px) {
+  .lead-card {
+    padding: 15px;
+  }
+  .asset-metadata {
+    grid-template-columns: 80px minmax(0, 1fr);
+  }
+  .asset-form-grid {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+  .asset-history-item {
+    padding: 10px;
+  }
+  .asset-pagination {
+    gap: 7px;
+  }
+  .asset-pagination .button {
+    padding: 7px 9px;
+  }
+}

@@ -9,6 +9,7 @@ import {
   Layers,
   CircleDot,
   RefreshCw,
+  Archive,
 } from 'lucide-react';
 import {
   type Operation,
@@ -18,8 +19,10 @@ import {
   post,
   displayDate,
   errorText,
+  archivedCaptureId,
 } from '@/lib/api';
 import { Status, Empty, Loading, ErrorBox } from './ui';
+import CaptureInspector, { CaptureDownload } from './capture-inspector';
 function RunDetails({ id }: { id: string }) {
   const [events, setEvents] = useState<RunEvent[] | null>(null);
   const [error, setError] = useState('');
@@ -56,11 +59,13 @@ function RunDetails({ id }: { id: string }) {
   );
 }
 export default function ActivityView({
+  role,
   operations,
   runs,
   onReport,
   onOperation,
 }: {
+  role: string;
   operations: Operation[];
   runs: Run[];
   onReport: () => void;
@@ -70,6 +75,7 @@ export default function ActivityView({
   const [filter, setFilter] = useState('all');
   const [retryError, setRetryError] = useState('');
   const [retrying, setRetrying] = useState('');
+  const [captureId, setCaptureId] = useState('');
   const entries = [
     ...operations.map((o) => ({ ...o, entryType: 'operation' as const })),
     ...runs.map((r) => ({ ...r, entryType: 'run' as const })),
@@ -147,26 +153,45 @@ export default function ActivityView({
                   ) : (
                     <div className="run-detail">
                       <span className="micro-label">OPERATION RESULT</span>
-                      {entry.status === 'failed' && (
-                        <button
-                          className="button secondary small"
-                          disabled={retrying === entry.id}
-                          onClick={async () => {
-                            setRetrying(entry.id);
-                            setRetryError('');
-                            try {
-                              const op = await post<Operation>(`/operations/${entry.id}/retry`, {});
-                              onOperation(op);
-                            } catch (e) {
-                              setRetryError(errorText(e));
-                            } finally {
-                              setRetrying('');
-                            }
-                          }}
-                        >
-                          <RefreshCw size={13} />
-                          重试这项操作
-                        </button>
+                      {entry.status === 'failed' &&
+                        ['researcher', 'editor', 'admin'].includes(role) && (
+                          <button
+                            className="button secondary small"
+                            disabled={retrying === entry.id}
+                            onClick={async () => {
+                              setRetrying(entry.id);
+                              setRetryError('');
+                              try {
+                                const op = await post<Operation>(
+                                  `/operations/${entry.id}/retry`,
+                                  {},
+                                );
+                                onOperation(op);
+                              } catch (e) {
+                                setRetryError(errorText(e));
+                              } finally {
+                                setRetrying('');
+                              }
+                            }}
+                          >
+                            <RefreshCw size={13} />
+                            重试这项操作
+                          </button>
+                        )}
+                      {archivedCaptureId(entry) && (
+                        <div className="archived-operation">
+                          <p>原始采集已留存。即使解析失败，也可检查归档记录与下载原件。</p>
+                          <div className="button-group">
+                            <button
+                              className="button secondary small"
+                              onClick={() => setCaptureId(archivedCaptureId(entry)!)}
+                            >
+                              <Archive size={14} />
+                              查看留存原件
+                            </button>
+                            <CaptureDownload captureId={archivedCaptureId(entry)!} />
+                          </div>
+                        </div>
                       )}
                       <pre>
                         {JSON.stringify(entry.result_json || { status: entry.status }, null, 2)}
@@ -182,6 +207,9 @@ export default function ActivityView({
         <Empty icon={<Activity size={27} />} title="研究的足迹，会留在这里">
           添加第一份资料或开始一次研究后，可以在这里查看处理进度、结果与失败原因。
         </Empty>
+      )}
+      {captureId && (
+        <CaptureInspector key={captureId} captureId={captureId} onClose={() => setCaptureId('')} />
       )}
     </section>
   );

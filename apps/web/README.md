@@ -53,7 +53,7 @@ The UI defaults to local evidence compilation, not external AI. External provide
 
 ## Verification
 
-`npm test` runs sixteen component-rendering and security-invariant checks. `npm run typecheck` and `npm run build` validate the actual production application.
+`npm test` runs twenty-one component-rendering and security-invariant checks. `npm run typecheck` and `npm run build` validate the actual production application.
 
 The real HTTP integration suite launches a throwaway SQLite backend plus the production Next server in a single network namespace, creates isolated admin/reader accounts with a random secret, exercises all calls through the Next proxy, and writes `test-results/proxy-integration.json`:
 
@@ -86,3 +86,9 @@ No remote font, image CDN, or other browser-side third-party asset is required. 
 See `VALIDATION.md` for exact passed checks and environment-limited stages. Offline-safe source-watch configuration is covered by the HTTP suite; live fetching and scheduled execution are not claimed as verified.
 
 Optional research web discovery is available through the backend API; the current research form does not expose web-discovery/search-provider controls. External model selection in the UI should not be confused with external source discovery.
+
+### Scholarly leads and retained failed originals
+
+The library has separate saved-document and scholarly-lead views. Leads are paginated; metadata-only, abstract-only and fulltext-available states remain distinct from completion of reading. The detail inspector shows current reviewed metadata, original provider observations and immutable correction history. Editors/admins can submit source-backed corrections with conflict protection; readers retain inspection access without correction controls.
+
+A failed parse with an archived capture offers original inspection and download in activity history. The absence of a research document does not hide retained raw bytes, and downloading an original does not mark it read or evidence-ready.

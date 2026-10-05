@@ -181,6 +181,54 @@ def create_app(settings_override=None, session_factory=None):
             result[name] = [d.serialize(item) for item in rows(session, model, workspace, project_id)]
         return result
 
+    @app.get("/v1/projects/{project_id}/context")
+    def bounded_project_context(
+        project_id: str, offset: int = Query(default=0, ge=0, le=1_000_000), limit: int = Query(default=20, ge=1, le=50),
+        session=Depends(get_session), workspace=Depends(require_workspace),
+    ):
+        from .scholarly import DiscoveredWork
+
+        project = d.project(session, workspace, project_id)
+        result = d.serialize(project)
+        result["description"] = project.description[:4000]
+        result["description_truncated"] = len(project.description) > 4000
+        result["counts"], result["pages"] = {}, {}
+        specs = [
+            ("documents", m.Document, [m.Document.id, func.substr(m.Document.title, 1, 500).label("title"), m.Document.kind, m.Document.version,
+                                      m.Document.capture_id, m.Document.representation_id]),
+            ("sources", m.Source, [m.Source.id, func.substr(m.Source.title, 1, 500).label("title"), m.Source.kind, m.Source.classification,
+                                   func.substr(m.Source.canonical_uri, 1, 1024).label("locator_preview")]),
+            ("questions", m.Question, [m.Question.id, func.substr(m.Question.text, 1, 500).label("text"),
+                                       func.length(m.Question.text).label("text_length"), m.Question.status]),
+            ("runs", m.ResearchRun, [m.ResearchRun.id, m.ResearchRun.status,
+                                     func.substr(m.ResearchRun.question, 1, 500).label("question")]),
+            ("proposals", m.Proposal, [m.Proposal.id, func.substr(m.Proposal.title, 1, 500).label("title"), m.Proposal.status,
+                                       m.Proposal.target_document_id, m.Proposal.base_version]),
+            ("operations", m.Operation, [m.Operation.id, m.Operation.kind, m.Operation.status,
+                                         m.Operation.started_at, m.Operation.completed_at]),
+            ("evidence", m.Evidence, [m.Evidence.id, m.Evidence.block_id, m.Evidence.capture_id,
+                                     m.Evidence.start_offset, m.Evidence.end_offset, m.Evidence.content_hash]),
+        ]
+        for name, model, columns in specs:
+            conditions = (model.workspace_id == workspace, model.project_id == project_id)
+            total = session.scalar(select(func.count()).select_from(model).where(*conditions))
+            selected = session.execute(select(*columns).where(*conditions)
+                                       .order_by(model.created_at.desc(), model.id).offset(offset).limit(limit)).mappings()
+            result[name] = [dict(item) for item in selected]
+            result["counts"][name] = total
+            result["pages"][name] = {"offset": offset, "limit": limit,
+                                     "next_offset": offset + limit if offset + limit < total else None}
+        result["counts"]["discovered_works"] = session.scalar(select(func.count()).select_from(DiscoveredWork)
+            .where(DiscoveredWork.workspace_id == workspace, DiscoveredWork.project_id == project_id))
+        report = session.execute(select(m.Document.id, func.substr(m.Document.title, 1, 500).label("title"), m.Document.version)
+            .where(m.Document.workspace_id == workspace, m.Document.project_id == project_id,
+                   m.Document.kind == "report").order_by(m.Document.updated_at.desc()).limit(1)).mappings().first()
+        result["report_baseline"] = dict(report) if report else None
+        result["field_limits_codepoints"] = {"description": 4000, "title": 500, "question": 500, "locator_preview": 1024}
+        result["content_included"] = False
+        result["reading_instruction"] = "Use version-pinned read_document for source/report content; summaries and IDs do not prove it was read"
+        return result
+
     @app.patch("/v1/projects/{project_id}")
     def update_project(
         project_id: str,
@@ -576,6 +624,23 @@ def create_app(settings_override=None, session_factory=None):
             block=d.serialize(block),
         )
         return result
+
+    @app.get("/v1/questions")
+    def list_questions(project_id: str, offset: int = Query(default=0, ge=0, le=1_000_000), limit: int = Query(default=20, ge=1, le=100),
+                       session=Depends(get_session), workspace=Depends(require_workspace)):
+        d.project(session, workspace, project_id)
+        conditions = (m.Question.workspace_id == workspace, m.Question.project_id == project_id)
+        total = session.scalar(select(func.count()).select_from(m.Question).where(*conditions))
+        selected = session.execute(select(m.Question.id, m.Question.status, m.Question.priority,
+            func.substr(m.Question.text, 1, 2000).label("text"), func.length(m.Question.text).label("text_length"),
+            func.substr(m.Question.answer, 1, 2000).label("answer"), func.length(m.Question.answer).label("answer_length"))
+            .where(*conditions).order_by(m.Question.created_at.desc(), m.Question.id).offset(offset).limit(limit)).mappings()
+        return {"items": [dict(item) for item in selected], "total": total, "offset": offset, "limit": limit,
+                "next_offset": offset + limit if offset + limit < total else None}
+
+    @app.get("/v1/questions/{question_id}")
+    def read_question(question_id: str, session=Depends(get_session), workspace=Depends(require_workspace)):
+        return d.serialize(d.scoped(session, m.Question, question_id, workspace))
 
     @app.post("/v1/questions", status_code=201)
     def question(

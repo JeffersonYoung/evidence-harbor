@@ -559,6 +559,7 @@ export default function Workspace() {
                 <Library
                   key={projectId}
                   projectId={projectId}
+                  role={role}
                   documents={documents}
                   sources={sources}
                   onAdd={() => setModal('ingest')}
@@ -576,6 +577,8 @@ export default function Workspace() {
               )}{' '}
               {tab === 'activity' && (
                 <ActivityView
+                  key={projectId}
+                  role={role}
                   operations={operations}
                   runs={runs}
                   onOperation={(o) => {

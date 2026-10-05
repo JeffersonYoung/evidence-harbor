@@ -55,3 +55,13 @@ New workflows use the replay-gated `operation-lifecycle-v2` activity contract. A
 Already-scheduled legacy activity commands retain their original timeout and failure contract, including the20-minute operation timeout. Replay markers do not retroactively shorten timers. Read the live execution endpoint when diagnosing these histories. The acceptance suite replays a real legacy history and kills only a disposable worker to verify genuine30-second heartbeat recovery without clock changes.
 
 Deploy immutable release directories or container images. Do not run a persistent worker from a checkout being edited: Temporal's workflow sandbox can load newer workflow definitions while the process still has old activity registrations. Stop/restart all API/worker/dispatcher processes together against the reviewed release, apply migrations against the persistent database, and preserve the database/object-store/Temporal identities. A mixed-code deployment is not a valid parser or recovery acceptance run.
+
+## Upgrade to schema head0009
+
+For an existing deployment, first stop writers, workers and the dispatcher and take a coordinated database/object-store backup (include Temporal persistence when recovering the full service). Install a reviewed immutable release, run `alembic upgrade head` with that deployment's database configuration, verify `alembic current` reports0009, then restart API/workers/dispatcher together and check pending operation execution state and evidence integrity. Keep the previous release and verified backup until acceptance is complete. Do not apply an irreversible schema downgrade to recover research provenance.
+
+Hosted CI uses disposable test databases. A green GitHub workflow does not back up, migrate or deploy the user's production database; those remain explicit operator deployment steps.
+
+### Bounded reprocessing for demanding documents
+
+The registered `extract` stage defaults to `parser_memory_mb: 1024` and `parser_timeout_seconds: 30`. An operator can submit an explicit safe pipeline to `/v1/captures/{id}/reprocess`, for example2048 MiB and60seconds for a saved PDF that exceeded the default. These remain bounded settings within the registry's supported128–8192 MiB and1–180second ranges, under the same isolated parser and source-map/quality gates. They do not raise global defaults or authorize unrestricted execution. Allocate corresponding worker/container capacity and bounded concurrency; a host limit may still be lower than the requested parser budget. Preserve the failed attempt and capture hash when comparing results.

@@ -111,6 +111,76 @@ export type Evidence = {
   document?: Document;
   locator_json?: Record<string, unknown>;
 };
+export type ScholarlyMetadata = {
+  title: string;
+  authors: string[];
+  year: number | null;
+  venue?: string;
+};
+export type DiscoveredWork = ScholarlyMetadata & {
+  id: string;
+  project_id: string;
+  abstract: string;
+  source_url?: string | null;
+  access_status: string;
+  content_scope: 'metadata_only' | 'abstract' | 'fulltext';
+  evidence_eligible: boolean;
+  fulltext_ready: boolean;
+  fulltext_read: boolean;
+  review_revision: number;
+  review_status: string;
+  provider_display?: ScholarlyMetadata;
+  aliases?: string[];
+  observations?: {
+    id: string;
+    created_at?: string;
+    payload_hash: string;
+    payload: Record<string, unknown>;
+  }[];
+  metadata_reviews?: {
+    id: string;
+    revision: number;
+    created_at?: string;
+    overrides_json: Partial<ScholarlyMetadata>;
+    reason: string;
+    source_url?: string | null;
+    evidence_ids: string[];
+    actor_json: { username?: string; role?: string; user_id?: string };
+  }[];
+  readings?: {
+    id: string;
+    document_id: string;
+    capture_id: string;
+    representation_id: string;
+    content_scope: string;
+    review_note: string;
+    provenance_json: Record<string, unknown>;
+  }[];
+};
+export type DiscoveredPage = {
+  items: DiscoveredWork[];
+  total: number;
+  offset: number;
+  next_offset: number | null;
+};
+export type Capture = {
+  id: string;
+  source_id: string;
+  project_id: string;
+  content_hash: string;
+  media_type: string;
+  byte_size: number;
+  fetched_at: string;
+  metadata_json: Record<string, unknown>;
+  processing_ready: boolean;
+  processing_operations: Operation[];
+  representations: { id: string; parser: string; content_hash: string }[];
+  observations: Record<string, unknown>[];
+};
+export function archivedCaptureId(operation: Operation) {
+  const id = operation.result_json?.capture_id;
+  return typeof id === 'string' && id.trim() ? id : null;
+}
 export class ApiError extends Error {
   constructor(
     public status: number,

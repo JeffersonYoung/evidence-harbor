@@ -71,7 +71,7 @@ class BridgeTests(unittest.TestCase):
                 requests,
                 [
                     (
-                        "/v1/projects/11111111-1111-4111-8111-111111111111",
+                        "/v1/projects/11111111-1111-4111-8111-111111111111/context?offset=0&limit=20",
                         "Bearer unit-test-fixture-not-a-credential",
                     )
                 ],

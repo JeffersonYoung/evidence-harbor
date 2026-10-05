@@ -62,5 +62,6 @@ npm run test:integration
 if [[ "${RUN_BROWSER_TESTS:-false}" == "true" ]]; then
   mkdir -p "$TMPDIR_TEST/browser-home"
   HOME="$TMPDIR_TEST/browser-home" npm run test:e2e
+  HOME="$TMPDIR_TEST/browser-home" node tests/scholarly-flow.mjs
 fi
 printf '\nTemporary test data and logs: %s\n' "$TMPDIR_TEST"
