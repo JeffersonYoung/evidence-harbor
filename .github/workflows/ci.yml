@@ -98,8 +98,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
-      # The test harness changes HOME; keep bundled Chromium at a fixed path.
-      PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/playwright-browsers
       RUN_BROWSER_TESTS: 'true'
     steps:
       - uses: actions/checkout@v4
@@ -114,6 +112,9 @@ jobs:
       - run: python -m venv .venv && .venv/bin/pip install --require-hashes -r requirements.lock && .venv/bin/pip install --no-deps -e .
       - run: npm ci && npm run typecheck && npm run build && npm run format:check
         working-directory: apps/web
+      # The test harness changes HOME; keep bundled Chromium at a fixed path.
+      - name: Configure shared Chromium cache
+        run: echo "PLAYWRIGHT_BROWSERS_PATH=$RUNNER_TEMP/playwright-browsers" >> "$GITHUB_ENV"
       - name: Install real Chromium and runtime dependencies
         run: npx playwright install --with-deps chromium
         working-directory: apps/web
