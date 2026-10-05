@@ -185,7 +185,12 @@ try {
       }
       await page.getByRole('button', { name: 'UI abstract lead', exact: true }).click();
       await page.locator('summary').filter({ hasText: '供应方摘要（非全文）' }).click();
-      await page.locator('.asset-history .safe-text').waitFor();
+      const providerAbstract = page
+        .locator('details.asset-history')
+        .filter({ has: page.locator('summary').filter({ hasText: /^供应方摘要（非全文）$/ }) })
+        .locator('.safe-text');
+      await providerAbstract.waitFor();
+      assert.ok((await providerAbstract.textContent()).includes('UNSAFE_SCHOLARLY_EXECUTED'));
       assert.equal(await page.evaluate(() => window.UNSAFE_SCHOLARLY_EXECUTED), undefined);
       assert.equal(await page.locator('.asset-detail script, .asset-detail img').count(), 0);
       await page.keyboard.press('Escape');
