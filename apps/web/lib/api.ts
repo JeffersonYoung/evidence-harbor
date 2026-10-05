@@ -116,6 +116,7 @@ export type ScholarlyMetadata = {
   authors: string[];
   year: number | null;
   venue?: string;
+  abstract?: string;
 };
 export type DiscoveredWork = ScholarlyMetadata & {
   id: string;
@@ -129,6 +130,18 @@ export type DiscoveredWork = ScholarlyMetadata & {
   fulltext_read: boolean;
   review_revision: number;
   review_status: string;
+  abstract_display_scope?: 'abstract_metadata';
+  abstract_evidence_eligible?: boolean;
+  abstract_reviewed?: boolean;
+  abstract_review_revision?: number;
+  abstract_sha256?: string;
+  abstract_review?: {
+    id: string;
+    revision: number;
+    reason: string;
+    source_url?: string | null;
+    evidence_ids: string[];
+  } | null;
   provider_display?: ScholarlyMetadata;
   aliases?: string[];
   observations?: {

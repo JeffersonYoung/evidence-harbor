@@ -450,6 +450,46 @@ await check(
   },
 );
 await check(
+  'Reviewed abstract stays metadata, preserves provenance and survives later intake',
+  async () => {
+    const path = `/discovered-works/${reviewedLead.id}/metadata-reviews`;
+    const replacement = 'Reviewed abstract 😀 中文. Version equivalence remains unverified.';
+    const body = {
+      expected_revision: 1,
+      changes: { abstract: replacement },
+      reason: 'Linked preprint source; equivalence to the published journal version is unverified.',
+      source_url: 'https://example.org/preprint-proof',
+    };
+    const reviewed = await req(path, { method: 'POST', body });
+    assert.equal(reviewed.status, 201, JSON.stringify(reviewed.data));
+    assert.equal(reviewed.data.abstract, replacement);
+    assert.equal(reviewed.data.abstract_review_revision, 2);
+    assert.equal(reviewed.data.abstract_display_scope, 'abstract_metadata');
+    assert.equal(reviewed.data.abstract_evidence_eligible, false);
+    assert.equal(reviewed.data.fulltext_ready, false);
+    assert.equal(reviewed.data.fulltext_read, false);
+    assert.equal(reviewed.data.provider_display.abstract, reviewedLead.abstract);
+    assert.deepEqual(reviewed.data.observations, reviewedLead.observations);
+    assert.equal(reviewed.data.abstract_review.reason, body.reason);
+    assert.equal((await req(path, { method: 'POST', body })).status, 409);
+    const rawObservation = reviewedLead.observations[0].payload;
+    const again = await req('/discovered-works/batch', {
+      method: 'POST',
+      body: {
+        project_id: scholarlyProject.id,
+        items: [{ ...rawObservation, abstract: 'Later provider text is not an editor override.' }],
+      },
+    });
+    assert.equal(again.status, 201);
+    assert.equal(again.data.items[0].abstract, replacement);
+    const window = await req(
+      `/discovered-works/${reviewedLead.id}?view=agent&abstract_start=16&abstract_limit=6`,
+    );
+    assert.equal(window.data.abstract, Array.from(replacement).slice(16, 22).join(''));
+    assert.equal((await req('/projects/' + scholarlyProject.id)).data.documents.length, 0);
+  },
+);
+await check(
   'Failed parse retains inspectable and downloadable original without creating a document',
   async () => {
     const original =

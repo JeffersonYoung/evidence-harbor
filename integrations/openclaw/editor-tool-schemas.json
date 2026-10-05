@@ -1,12 +1,27 @@
 [
   {
     "name": "review_discovered_work_metadata",
-    "description": "Opt-in editor-only reviewed display correction, with expected_revision CAS and source/evidence links.\n\n    Tool visibility does not grant editor permissions. Provider observations and IDs\n    remain intact. This cannot publish reports, alter identities or modify schedules.\n    ",
+    "description": "Opt-in editor-only reviewed display/abstract correction, with expected_revision CAS and source/evidence links.\n\n    Tool visibility does not grant editor permissions. Provider observations and IDs\n    remain intact. Abstract corrections remain metadata, not fulltext evidence; preserve\n    source-version caveats in the reason. This cannot publish reports, alter identities or modify schedules.\n    ",
     "inputSchema": {
       "$defs": {
         "DisplayMetadataPatch": {
           "additionalProperties": false,
           "properties": {
+            "abstract": {
+              "anyOf": [
+                {
+                  "maxLength": 100000,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Reviewed abstract metadata only; never fulltext evidence or reading completion",
+              "title": "Abstract"
+            },
             "title": {
               "anyOf": [
                 {

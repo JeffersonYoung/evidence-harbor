@@ -45,7 +45,7 @@ async def export():
     manifest = {
         "id": "evidenceharbor",
         "name": "EvidenceHarbor",
-        "version": "0.2.0",
+        "version": "0.2.1",
         "description": "Research tools using the EvidenceHarbor MCP server and existing API authorization",
         "categories": ["other"],
         "contracts": {"tools": names},

@@ -38,7 +38,13 @@ export function WorkScope({ work }: { work: DiscoveredWork }) {
   );
 }
 
-function MetadataDisplay({ metadata }: { metadata: ScholarlyMetadata }) {
+function MetadataDisplay({
+  metadata,
+  includeAbstract = false,
+}: {
+  metadata: ScholarlyMetadata;
+  includeAbstract?: boolean;
+}) {
   return (
     <dl className="asset-metadata">
       <dt>标题</dt>
@@ -49,6 +55,14 @@ function MetadataDisplay({ metadata }: { metadata: ScholarlyMetadata }) {
       <dd>{metadata.year ?? '未提供'}</dd>
       <dt>期刊 / 会议</dt>
       <dd>{metadata.venue || '未提供'}</dd>
+      {includeAbstract && (
+        <>
+          <dt>供应方原始摘要</dt>
+          <dd>
+            <SafeText text={metadata.abstract || '未提供'} />
+          </dd>
+        </>
+      )}
     </dl>
   );
 }
@@ -72,6 +86,7 @@ export function MetadataReviewForm({
   onReload: () => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const [abstractEdited, setAbstractEdited] = useState(false);
   const [error, setError] = useState('');
   const [conflict, setConflict] = useState(false);
   const submitting = useRef(false);
@@ -96,7 +111,15 @@ export function MetadataReviewForm({
           .filter(Boolean);
         const yearText = String(data.get('year') || '').trim();
         const venue = String(data.get('venue') || '').trim();
+        const abstract = String(data.get('abstract') ?? work.abstract);
         const changes: Partial<ScholarlyMetadata> = {};
+        if (abstractEdited && abstract !== work.abstract) {
+          if (!abstract.trim()) {
+            setError('摘要更正必须提供非空替换文本；不能在此清空原摘要。');
+            return;
+          }
+          changes.abstract = abstract;
+        }
         if (title !== work.title) changes.title = title;
         if (JSON.stringify(authors) !== JSON.stringify(work.authors)) changes.authors = authors;
         if (yearText && Number(yearText) !== work.year) changes.year = Number(yearText);
@@ -169,6 +192,19 @@ export function MetadataReviewForm({
           <input name="venue" maxLength={1000} defaultValue={work.venue || ''} />
         </Field>
       </div>
+      <Field label="摘要（元数据）">
+        <textarea
+          name="abstract"
+          onChange={() => setAbstractEdited(true)}
+          aria-label="摘要（元数据）"
+          defaultValue={work.abstract}
+          maxLength={100000}
+          rows={6}
+        />
+      </Field>
+      <p className="scope-note">
+        摘要更正仅改变目录展示，不认证全文阅读或期刊／预印本版本等价。请在理由中注明来源版本与限制。
+      </p>
       <Field label="更正依据链接">
         <input name="source_url" type="url" required placeholder="https://…" />
       </Field>
@@ -240,9 +276,31 @@ export function WorkDetails({
         </details>
       )}
       {work.abstract && (
-        <details className="asset-history">
-          <summary>供应方摘要（非全文）</summary>
+        <details className="asset-history" open={work.abstract_reviewed || undefined}>
+          <summary>
+            {work.abstract_reviewed
+              ? '经审核的摘要展示（元数据，非全文证据）'
+              : '供应方摘要（非全文）'}
+          </summary>
           <SafeText text={work.abstract} />
+          {work.abstract_reviewed && (
+            <p className="scope-note">
+              此处是摘要元数据，不是留存正文的证据锚点；不自动认证期刊／预印本版本等价，也不表示已经通读。
+            </p>
+          )}
+          {work.abstract_review && (
+            <div className="asset-history-item">
+              <strong>摘要更正 · 修订 {work.abstract_review.revision}</strong>
+              <p>{work.abstract_review.reason}</p>
+              <SourceLink url={work.abstract_review.source_url}>摘要核验来源</SourceLink>
+              {!!work.abstract_review.evidence_ids.length && (
+                <p className="asset-id">核验依据：{work.abstract_review.evidence_ids.join('、')}</p>
+              )}
+            </div>
+          )}
+          {work.abstract_sha256 && (
+            <p className="asset-id">摘要 SHA-256 · {work.abstract_sha256}</p>
+          )}
         </details>
       )}
       <section className="asset-section">
@@ -286,7 +344,7 @@ export function WorkDetails({
       </section>
       <details className="asset-history">
         <summary>供应方原始展示信息</summary>
-        <MetadataDisplay metadata={work.provider_display || work} />
+        <MetadataDisplay metadata={work.provider_display || work} includeAbstract />
       </details>
       <details className="asset-history">
         <summary>原始来源与观察记录 · {work.observations?.length || 0}</summary>

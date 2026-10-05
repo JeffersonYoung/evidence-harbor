@@ -85,7 +85,7 @@ try {
       source_url: sourceUrl,
     },
   ]);
-  await intake([
+  const [abstractLead] = await intake([
     {
       title: 'UI abstract lead',
       authors: ['Abstract Author'],
@@ -236,6 +236,41 @@ try {
       );
       await close();
       await page.getByRole('button', { name: 'UI reviewed lead', exact: true }).waitFor();
+    },
+  );
+  await check(
+    'Reviewed abstract correction preserves provider original and stays non-evidence metadata',
+    async () => {
+      await page.getByRole('button', { name: 'UI abstract lead', exact: true }).click();
+      await page
+        .locator('summary')
+        .filter({ hasText: /^更正展示元数据$/ })
+        .click();
+      const replacement = 'Reviewed abstract metadata: observed limitations remain. 😀';
+      const caveat =
+        'Verified linked preprint abstract; journal-version equivalence remains unverified.';
+      await page.getByLabel('摘要（元数据）', { exact: true }).fill(replacement);
+      await page
+        .getByLabel('更正依据链接', { exact: true })
+        .fill('https://example.org/preprint/abstract-proof');
+      await page.getByLabel('更正理由', { exact: true }).fill(caveat);
+      await page.getByRole('button', { name: '保存元数据更正', exact: true }).click();
+      await page
+        .getByText('元数据更正已保存，原始观察与历史记录已保留。', { exact: true })
+        .waitFor();
+      await page.getByText('经审核的摘要展示（元数据，非全文证据）', { exact: true }).waitFor();
+      await page.getByText(caveat, { exact: true }).first().waitFor();
+      const saved = await (
+        await context.request.get(base + '/api/discovered-works/' + abstractLead.id)
+      ).json();
+      assert.equal(saved.abstract, replacement);
+      assert.equal(saved.abstract_display_scope, 'abstract_metadata');
+      assert.equal(saved.abstract_evidence_eligible, false);
+      assert.equal(saved.fulltext_ready, false);
+      assert.equal(saved.fulltext_read, false);
+      assert.ok(saved.provider_display.abstract.includes('UNSAFE_SCHOLARLY_EXECUTED'));
+      assert.equal(await page.locator('.asset-detail script, .asset-detail img').count(), 0);
+      await close();
     },
   );
   await check(

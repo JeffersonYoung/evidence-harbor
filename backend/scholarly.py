@@ -285,8 +285,38 @@ def work_record(session, work, detail=False):
     value["review_revision"] = reviews[-1].revision if reviews else 0
     value["review_status"] = "reviewed_metadata" if reviews else "unreviewed_provider_metadata"
     if reviews:
-        value["provider_display"] = {"title": work.title, "authors": work.authors, "year": work.year}
+        value["provider_display"] = {
+            "title": work.title,
+            "authors": work.authors,
+            "year": work.year,
+            "abstract": work.abstract,
+        }
         value.update(reviews[-1].overrides_json)
+    # Display corrections never create a parsed representation, evidence or a fulltext reading.
+    value["content_scope"] = (
+        "fulltext" if full else "abstract" if value["abstract"] or readings else "metadata_only"
+    )
+    abstract_revision = value.get("abstract_review_revision", 0)
+    value["abstract_review_revision"] = abstract_revision
+    value["abstract_reviewed"] = bool(abstract_revision)
+    value["abstract_display_scope"] = "abstract_metadata"
+    value["abstract_evidence_eligible"] = False
+    value["abstract_sha256"] = d.digest(value["abstract"])
+    value["abstract_review"] = None
+    if abstract_revision:
+        abstract_review = session.scalar(
+            select(WorkMetadataReview).where(
+                WorkMetadataReview.work_id == work.id, WorkMetadataReview.revision == abstract_revision
+            )
+        )
+        if abstract_review is not None:
+            value["abstract_review"] = {
+                "id": abstract_review.id,
+                "revision": abstract_review.revision,
+                "reason": abstract_review.reason,
+                "source_url": abstract_review.source_url,
+                "evidence_ids": abstract_review.evidence_ids,
+            }
     if detail:
         value["metadata_reviews"] = [d.serialize(row) for row in reviews]
         value["aliases"] = [
@@ -300,9 +330,9 @@ def work_record(session, work, detail=False):
     return value
 
 
-def agent_work_summary(session, work):
+def agent_work_summary(session, work, record=None):
     """Bounded projection only; eligibility and reviewed metadata stay in the common domain."""
-    record = work_record(session, work)
+    record = work_record(session, work) if record is None else record
     fields = (
         "id",
         "project_id",
@@ -315,6 +345,11 @@ def agent_work_summary(session, work):
         "fulltext_read",
         "review_revision",
         "review_status",
+        "abstract_display_scope",
+        "abstract_evidence_eligible",
+        "abstract_reviewed",
+        "abstract_review_revision",
+        "abstract_sha256",
     )
     result = {key: record[key] for key in fields}
     result["agent_projection_version"] = 1
@@ -327,23 +362,38 @@ def agent_work_summary(session, work):
         or any(len(name) > 200 for name in record["authors"][:20]),
         venue=str(record.get("venue", ""))[:500],
         source_url_preview=(record.get("source_url") or "")[:1024],
-        abstract_length=len(work.abstract),
+        abstract_length=len(record["abstract"]),
         full_text_reading_certified=False,
+    )
+    review = record.get("abstract_review")
+    result["abstract_review"] = (
+        {
+            "id": review["id"],
+            "revision": review["revision"],
+            "reason": review["reason"][:1000],
+            "reason_length": len(review["reason"]),
+            "source_url_preview": (review["source_url"] or "")[:1024],
+        }
+        if review
+        else None
     )
     return result
 
 
 def agent_work_detail(session, work, offset, limit, abstract_start, abstract_limit):
-    if abstract_start > len(work.abstract):
+    record = work_record(session, work)
+    abstract = record["abstract"]
+    if abstract_start > len(abstract):
         raise d.DomainError("Abstract range is outside the saved abstract", 422)
-    result = agent_work_summary(session, work)
-    end = min(len(work.abstract), abstract_start + abstract_limit)
-    result["abstract"] = work.abstract[abstract_start:end]
+    result = agent_work_summary(session, work, record)
+    end = min(len(abstract), abstract_start + abstract_limit)
+    result["abstract"] = abstract[abstract_start:end]
+    result["abstract_window_sha256"] = d.digest(result["abstract"])
     result["abstract_range"] = {
         "start_offset": abstract_start,
         "end_offset": end,
-        "total_length": len(work.abstract),
-        "next_offset": end if end < len(work.abstract) else None,
+        "total_length": len(abstract),
+        "next_offset": end if end < len(abstract) else None,
         "offset_unit": "unicode_code_points",
     }
     result["pages"] = {}
@@ -595,12 +645,17 @@ def create_router(require_workspace, require_role, require_principal):
             raise d.DomainError("Metadata correction requires a source URL or verified evidence", 422)
         if payload.evidence_ids:
             d.validate_evidence(session, workspace, work.project_id, payload.evidence_ids)
+        overrides = {**(previous.overrides_json if previous else {}), **changes}
+        if "abstract" in changes:
+            prior_abstract = (previous.overrides_json if previous else {}).get("abstract", work.abstract)
+            if changes["abstract"] != prior_abstract or not overrides.get("abstract_review_revision"):
+                overrides["abstract_review_revision"] = revision + 1
         record = WorkMetadataReview(
             workspace_id=workspace,
             project_id=work.project_id,
             work_id=work.id,
             revision=revision + 1,
-            overrides_json={**(previous.overrides_json if previous else {}), **changes},
+            overrides_json=overrides,
             reason=payload.reason,
             source_url=payload.source_url,
             evidence_ids=payload.evidence_ids,

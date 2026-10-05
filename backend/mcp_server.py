@@ -404,10 +404,11 @@ def editor_tools_enabled() -> bool:
 
 
 def review_discovered_work_metadata(work_id: str, review: MetadataReviewInput) -> dict:
-    """Opt-in editor-only reviewed display correction, with expected_revision CAS and source/evidence links.
+    """Opt-in editor-only reviewed display/abstract correction, with expected_revision CAS and source/evidence links.
 
     Tool visibility does not grant editor permissions. Provider observations and IDs
-    remain intact. This cannot publish reports, alter identities or modify schedules.
+    remain intact. Abstract corrections remain metadata, not fulltext evidence; preserve
+    source-version caveats in the reason. This cannot publish reports, alter identities or modify schedules.
     """
     if not editor_tools_enabled():
         raise ValueError("Editor MCP tools are disabled; explicit operator opt-in is required")

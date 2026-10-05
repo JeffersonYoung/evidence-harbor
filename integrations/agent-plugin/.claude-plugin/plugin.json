@@ -1,6 +1,6 @@
 {
   "name": "evidenceharbor",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Ground research in versioned EvidenceHarbor sources and propose reviewable updates.",
   "author": {
     "name": "EvidenceHarbor contributors"

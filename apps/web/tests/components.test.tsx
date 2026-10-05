@@ -253,3 +253,52 @@ test('failed capture inspector provides original download without a document and
     null,
   );
 });
+
+test('reviewed abstract remains metadata with original provider text and visible version caveat', () => {
+  const html = renderToStaticMarkup(
+    <WorkDetails
+      work={{
+        ...lead,
+        content_scope: 'abstract',
+        abstract: 'Reviewed abstract <script>bad()</script>',
+        abstract_reviewed: true,
+        abstract_review_revision: 1,
+        abstract_display_scope: 'abstract_metadata',
+        abstract_evidence_eligible: false,
+        abstract_sha256: 'fixture-hash',
+        review_revision: 2,
+        provider_display: { ...lead, abstract: 'Original degraded provider abstract' },
+        abstract_review: {
+          id: 'review-1',
+          revision: 1,
+          reason: 'Linked preprint; journal-version equivalence unverified.',
+          source_url: 'https://example.org/preprint',
+          evidence_ids: [],
+        },
+      }}
+      role="reader"
+      onRead={noop}
+      onSaved={noop}
+      onReload={noop}
+    />,
+  );
+  assert.match(html, /Original degraded provider abstract/);
+  assert.match(html, /journal-version equivalence unverified/);
+  assert.match(html, /元数据，非全文证据/);
+  assert.match(html, /尚不可作为证据/);
+  assert.ok(!html.includes('<script>'));
+  assert.ok(!html.includes('name="abstract"'));
+});
+
+test('editor abstract field has a stable label and explicit no-clearing/no-fulltext semantics', () => {
+  const html = renderToStaticMarkup(
+    <MetadataReviewForm
+      work={{ ...lead, abstract: 'Provider abstract' }}
+      onSaved={noop}
+      onReload={noop}
+    />,
+  );
+  assert.match(html, /name="abstract"/);
+  assert.match(html, /aria-label="摘要（元数据）"/);
+  assert.match(html, /不认证全文阅读/);
+});

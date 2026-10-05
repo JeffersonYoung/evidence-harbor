@@ -237,6 +237,12 @@ class ReadingInput(StrictModel):
 
 
 class DisplayMetadataPatch(StrictModel):
+    abstract: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=100000,
+        description="Reviewed abstract metadata only; never fulltext evidence or reading completion",
+    )
     title: str | None = Field(default=None, min_length=1, max_length=2000)
     authors: list[str] | None = Field(default=None, min_length=1, max_length=200)
     year: int | None = Field(default=None, ge=1000, le=2200)
