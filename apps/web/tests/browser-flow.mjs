@@ -119,11 +119,15 @@ try {
     await page.getByRole('button', { name: '起草报告', exact: true }).click();
     await page.getByLabel('报告标题', { exact: true }).fill('混合办公：证据综述');
     await page
-      .getByLabel(/^正文(?:\s|$)/)
+      .getByRole('dialog')
+      .getByLabel(/^正文/)
       .fill(
         '# 核心结论\n\nRemote work can improve focus.\n\n# 限制\n\nEvidence is limited to knowledge workers.',
       );
-    await page.getByLabel(/^核心结论(?:\s|$)/).fill('Remote work can improve focus.');
+    await page
+      .getByRole('dialog')
+      .getByLabel(/^核心结论/)
+      .fill('Remote work can improve focus.');
     await page.locator('.evidence-choices input').first().check();
     await page.getByRole('button', { name: '保存为提案', exact: true }).click();
     await page.getByRole('button', { name: '审核并发布', exact: true }).click();
