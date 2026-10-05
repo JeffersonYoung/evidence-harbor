@@ -181,9 +181,12 @@ def test_failed_ingestion_is_observable_and_cannot_publish_partial_assets(runtim
     failed = domain.execute_operation(operation_id, runtime.session_factory)
     assert failed['status'] == 'failed'
     assert failed['error']
-    assert failed['result_json'] is None
+    assert failed['result_json']['archival_complete'] is True
+    assert failed['result_json']['capture_id']
     repeated = domain.execute_operation(operation_id, runtime.session_factory)
     assert repeated['status'] == 'failed'
     with runtime.session_factory() as session:
-        for model in (m.Capture, m.Representation, m.Block, m.Document, m.IndexGeneration):
+        # Raw archival is durable; a failed quality gate publishes no derived resources.
+        assert session.scalar(select(func.count()).select_from(m.Capture)) == 1
+        for model in (m.Representation, m.Block, m.Document, m.IndexGeneration):
             assert session.scalar(select(func.count()).select_from(model)) == 0

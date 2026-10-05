@@ -229,6 +229,7 @@ def create_app(settings_override=None, session_factory=None):
         title: str | None = Form(default=None),
         original_url: str | None = Form(default=None),
         classification: str = Form(default="internal"),
+        content_scope: str = Form(default="unspecified"),
         session=Depends(get_session),
         workspace=Depends(require_role("researcher")),
         idempotency_key: str | None = Header(default=None, max_length=255),
@@ -241,9 +242,12 @@ def create_app(settings_override=None, session_factory=None):
             raise d.DomainError("Uploaded file is empty", 422)
         if classification not in {"public", "internal", "sensitive"}:
             raise d.DomainError("Invalid source classification", 422)
+        if content_scope not in {"unspecified", "abstract", "fulltext"}:
+            raise d.DomainError("Invalid content scope; metadata belongs in discovered-works", 422)
         path = d.write_blob(content, settings.blob_dir)
         data = {
             "type": "upload",
+            "content_scope": content_scope,
             "classification": classification,
             "blob_path": path,
             "media_type": file.content_type or "application/octet-stream",
@@ -266,11 +270,22 @@ def create_app(settings_override=None, session_factory=None):
         return [d.serialize(o) for o in rows(session, m.Operation, workspace, project_id)]
 
     @app.get("/v1/operations/{operation_id}")
-    def get_operation(operation_id: str, session=Depends(get_session), workspace=Depends(require_workspace)):
-        return d.serialize(d.scoped(session, m.Operation, operation_id, workspace))
+    def get_operation(operation_id: str, request: Request, session=Depends(get_session), workspace=Depends(require_workspace)):
+        result = d.serialize(d.scoped(session, m.Operation, operation_id, workspace))
+        result["execution_backend"] = "inline" if request.app.state.settings.inline_worker else "temporal"
+        result["status_scope"] = "local_operation" if request.app.state.settings.inline_worker else "activity_attempt"
+        return result
+
+    @app.get("/v1/operations/{operation_id}/execution")
+    async def execution_status(operation_id: str, request: Request, session=Depends(get_session), workspace=Depends(require_workspace)):
+        from .execution_status import describe_execution
+
+        op = d.scoped(session, m.Operation, operation_id, workspace)
+        dispatch = session.scalar(select(m.OperationDispatch).where(m.OperationDispatch.operation_id == op.id))
+        return await describe_execution(op, dispatch, request.app.state.settings.inline_worker)
 
     @app.post("/v1/operations/{operation_id}/retry", status_code=202)
-    def retry_operation(
+    async def retry_operation(
         operation_id: str,
         request: Request,
         background: BackgroundTasks,
@@ -278,12 +293,27 @@ def create_app(settings_override=None, session_factory=None):
         workspace=Depends(require_role("researcher")),
     ):
         op = d.scoped(session, m.Operation, operation_id, workspace)
-        if op.status != "failed":
-            raise d.DomainError("Only failed operations may be retried", 409)
-        op.status, op.error = "pending", None
-        dispatch = session.scalar(
-            select(m.OperationDispatch).where(m.OperationDispatch.operation_id == op.id)
-        )
+        dispatch = session.scalar(select(m.OperationDispatch).where(m.OperationDispatch.operation_id == op.id))
+        observed_generation = dispatch.generation
+        if request.app.state.settings.inline_worker:
+            if op.status != "failed":
+                raise d.DomainError("Only failed operations may be retried", 409)
+        else:
+            from .execution_status import TERMINAL_FAILURES, describe_execution
+
+            execution = await describe_execution(op, dispatch, False)
+            if not execution["available"]:
+                raise d.DomainError("Workflow state is unavailable; retry was not scheduled", 503)
+            if execution.get("workflow_status") not in TERMINAL_FAILURES:
+                raise d.DomainError("The durable workflow is not terminally failed; activity retries are still owned by Temporal", 409)
+        # A concurrent explicit retry must not allocate another generation from stale state.
+        op = session.scalar(select(m.Operation).where(m.Operation.id == op.id).with_for_update()
+                            .execution_options(populate_existing=True))
+        dispatch = session.scalar(select(m.OperationDispatch).where(m.OperationDispatch.operation_id == op.id)
+                                  .with_for_update().execution_options(populate_existing=True))
+        if dispatch.generation != observed_generation:
+            raise d.DomainError("Another retry already changed this operation generation", 409)
+        op.status, op.error, op.completed_at = "pending", None, None
         dispatch.status, dispatch.last_error = "pending", None
         dispatch.generation = (dispatch.generation or 0) + 1
         commit(session)
@@ -350,6 +380,15 @@ def create_app(settings_override=None, session_factory=None):
                 )
             )
         ]
+        result["processing_operations"] = [
+            {"id": operation.id, "kind": operation.kind, "status": operation.status, "error": operation.error}
+            for operation in session.scalars(select(m.Operation).where(
+                m.Operation.workspace_id == workspace, m.Operation.project_id == cap.project_id,
+                m.Operation.kind.in_(["ingest", "reprocess"])
+            ))
+            if (operation.result_json or {}).get("capture_id") == cap.id or operation.input_json.get("capture_id") == cap.id
+        ]
+        result["processing_ready"] = bool(result["representations"])
         return result
 
     @app.post("/v1/captures/{capture_id}/reprocess", status_code=202)
@@ -465,6 +504,18 @@ def create_app(settings_override=None, session_factory=None):
         result["capture"] = (
             d.serialize(d.scoped(session, m.Capture, capture_id, workspace)) if capture_id else None
         )
+        if rep_id and capture_id:
+            from .scholarly import WorkReading
+            from .scholarly import content_scope as scholarly_scope
+
+            cap = d.scoped(session, m.Capture, capture_id, workspace)
+            result["content_scope"] = scholarly_scope(session, representation, cap)
+            result["fulltext_ready"] = result["content_scope"] == "fulltext" and session.scalar(
+                select(WorkReading.id).where(WorkReading.representation_id == rep_id,
+                                             WorkReading.workspace_id == workspace,
+                                             WorkReading.content_scope == "fulltext").limit(1)
+            ) is not None
+            result["fulltext_read"] = False
         if start is not None or limit is not None or block_id is not None:
             result = d.document_read_range(result, start=start, limit=limit or 8000, block_id=block_id)
         return result
@@ -718,6 +769,9 @@ def create_app(settings_override=None, session_factory=None):
         app.include_router(extensions_router(require_workspace, require_role))
     except ImportError:
         pass
+    from .scholarly import create_router as scholarly_router
+
+    app.include_router(scholarly_router(require_workspace, require_role, get_principal))
     return app
 
 

@@ -196,6 +196,59 @@ def split_blocks(content: str, max_size=1800):
     return blocks
 
 
+def archive_capture(
+    session, workspace_id, project_id, source_uri, kind, title, raw_bytes, media_type,
+    metadata=None, access_scope="workspace", representation_variant="default", blob_dir=None,
+    classification="internal",
+):
+    """Store original bytes and identity only; parsing never determines archive visibility."""
+    project(session, workspace_id, project_id)
+    if classification not in {"public", "internal", "sensitive"}:
+        raise DomainError("Invalid source classification", 422)
+    source = session.scalar(select(m.Source).where(
+        m.Source.workspace_id == workspace_id, m.Source.project_id == project_id,
+        m.Source.canonical_uri == source_uri, m.Source.access_scope == access_scope,
+        m.Source.representation_variant == representation_variant,
+    ).with_for_update())
+    if source is None:
+        source = m.Source(workspace_id=workspace_id, project_id=project_id, canonical_uri=source_uri,
+                          kind=kind, title=title or source_uri, classification=classification,
+                          access_scope=access_scope, representation_variant=representation_variant)
+        session.add(source)
+        session.flush()
+    if source.classification != classification:
+        raise DomainError("Source classification is immutable; select a distinct access scope or representation variant", 409)
+    previous = session.scalar(select(m.Capture).where(m.Capture.source_id == source.id)
+                              .order_by(m.Capture.created_at.desc()))
+    checksum = digest(raw_bytes)
+    unchanged = previous is not None and previous.content_hash == checksum
+    if unchanged:
+        capture = previous
+        # Reusing an old identity must not silently change content-scope declarations.
+        if capture.metadata_json.get("content_scope", "unspecified") != (metadata or {}).get("content_scope", "unspecified"):
+            raise DomainError("Saved content scope is immutable", 409)
+        read_blob(capture, session.info.get("settings"))
+    else:
+        capture = m.Capture(workspace_id=workspace_id, project_id=project_id, source_id=source.id,
+                            previous_capture_id=previous.id if previous else None, content_hash=checksum,
+                            blob_path=write_blob(raw_bytes, blob_dir), media_type=media_type,
+                            byte_size=len(raw_bytes), metadata_json={**dict(metadata or {}), "raw_hash": checksum,
+                            "storage_backend": "s3" if os.getenv("STORAGE_BACKEND") == "s3" else "local",
+                            "archived_before_processing": True})
+        session.add(capture)
+        session.flush()
+    session.add(m.FetchObservation(workspace_id=workspace_id, project_id=project_id,
+                                  source_id=source.id, capture_id=capture.id,
+                                  status="unchanged" if unchanged else "changed", content_hash=checksum,
+                                  metadata_json={"archival_complete": True}))
+    saved = {"source_id": source.id, "capture_id": capture.id, "unchanged": unchanged,
+             "archival_complete": True}
+    if not unchanged:
+        emit_event(session, workspace_id, project_id, "capture.created", saved)
+    session.flush()
+    return saved
+
+
 def store_capture(
     session,
     workspace_id,
@@ -463,6 +516,8 @@ def store_representation(
 
 
 def search(session, workspace_id, project_id, query, limit=20):
+    from .scholarly import content_scope
+
     project(session, workspace_id, project_id)
     terms = list(dict.fromkeys(tokenize(query)))
     if not terms:
@@ -503,6 +558,7 @@ def search(session, workspace_id, project_id, query, limit=20):
                 "title": doc.title,
                 "source_uri": source.canonical_uri,
                 "classification": source.classification,
+                "content_scope": content_scope(session, rep, cap),
                 "text": block.text,
                 "score": round(score, 6),
                 "locator_json": block.locator_json,
@@ -522,6 +578,11 @@ def create_evidence(session, workspace_id, project_id, block_id, quote, start_of
         raise DomainError("Quote does not exactly match the referenced block", 422)
     rep = scoped(session, m.Representation, block.representation_id, workspace_id, project_id)
     cap = scoped(session, m.Capture, rep.capture_id, workspace_id, project_id)
+    from .scholarly import content_scope
+
+    scope = content_scope(session, rep, cap)
+    if scope == "metadata_only":
+        raise DomainError("Discovery metadata cannot establish research evidence", 422)
     if evidence_id:
         existing = session.get(m.Evidence, evidence_id)
         if existing:
@@ -546,6 +607,7 @@ def create_evidence(session, workspace_id, project_id, block_id, quote, start_of
         content_hash=digest(quote),
         locator_json={
             **block.locator_json,
+            "content_scope": scope,
             "representation_start_offset": block.start_offset + offset,
             "representation_end_offset": block.start_offset + offset + len(quote),
         },
@@ -599,7 +661,18 @@ def validate_claims(session, workspace_id, project_id, content, claims):
             raise DomainError("Every claim must appear verbatim in proposal content", 422)
         if not claim.get("evidence_ids"):
             raise DomainError("Every claim requires evidence", 422)
-        validate_evidence(session, workspace_id, project_id, claim["evidence_ids"])
+        verified = validate_evidence(session, workspace_id, project_id, claim_evidence_ids(claim))
+        from .scholarly import content_scope
+
+        for evidence in verified:
+            block = scoped(session, m.Block, evidence.block_id, workspace_id, project_id)
+            rep = scoped(session, m.Representation, block.representation_id, workspace_id, project_id)
+            cap = scoped(session, m.Capture, evidence.capture_id, workspace_id, project_id)
+            scope = content_scope(session, rep, cap)
+            if scope == "metadata_only":
+                raise DomainError("Metadata-only evidence cannot support a claim", 422)
+            if scope == "abstract" and claim.get("scope") != "abstract":
+                raise DomainError("Claims using abstract evidence must explicitly declare scope='abstract'", 422)
         for link in claim.get("evidence_links", []):
             if link.get("relation") not in {"supporting", "contradicting", "limiting"}:
                 raise DomainError("Invalid claim evidence relation", 422)
@@ -865,7 +938,7 @@ def create_research_run(session, workspace_id, project_id, question, provider="l
 def discover_and_ingest(session, run, config, started, audit):
     """Bounded discovery; only ordinary saved captures can become evidence."""
     from .continuous import discover_sources
-    from .processing import ingest_operation
+    from .processing import archive_ingestion, ingest_operation
 
     if config.get("web_discovery") is not True:
         return {"searches": 0, "ingestions": 0, "document_ids": [], "search_cost_reserved_usd": 0.0}
@@ -947,12 +1020,19 @@ def discover_and_ingest(session, run, config, started, audit):
             saved = operation.result_json
         else:
             attempts += 1
+            # Acquisition is an independent durable activity: a later research/model
+            # failure must not erase originals that were already saved successfully.
+            session.commit()
             try:
                 with session.begin_nested():
                     operation.status, operation.started_at = "running", m.utcnow()
+                    if not (operation.result_json or {}).get("archival_complete"):
+                        archive_ingestion(session, operation)
+                session.commit()
+                with session.begin_nested():
                     saved = ingest_operation(session, operation)
                     complete_operation(session, operation, saved)
-                    session.flush()
+                session.commit()
             except Exception as exc:
                 logging.getLogger(__name__).exception("Discovery candidate ingestion %s failed", operation.id)
                 dispatch = session.scalar(
@@ -963,6 +1043,10 @@ def discover_and_ingest(session, run, config, started, audit):
                     session, operation, f"{type(exc).__name__}: candidate could not be saved and validated"
                 )
                 lead["reason"] = operation.error
+                if (operation.result_json or {}).get("archival_complete"):
+                    lead["capture_id"] = operation.result_json["capture_id"]
+                    lead["archival_complete"] = True
+                session.commit()
                 continue
         dispatch = session.scalar(
             select(m.OperationDispatch).where(m.OperationDispatch.operation_id == operation.id)
@@ -1049,6 +1133,7 @@ def research_run(session, run, external_call=None, research_context=None):
                 "title": hit["title"],
                 "source_uri": hit["source_uri"],
                 "classification": hit["classification"],
+                "content_scope": hit.get("content_scope", "unspecified"),
             }
         )
     run_event(session, run, "evidence.collected", {"evidence_ids": [e["id"] for e in evidence]})
@@ -1088,6 +1173,11 @@ def research_run(session, run, external_call=None, research_context=None):
         )
         .order_by(m.Document.updated_at.desc())
     )
+    abstract_ids = {item["id"] for item in evidence if item.get("content_scope") == "abstract"}
+    for claim in result["claims"]:
+        if abstract_ids.intersection(claim_evidence_ids(claim)):
+            claim["scope"] = "abstract"
+            claim["limitations"] = [*claim.get("limitations", []), "Supported only within an abstract; full text was not established"]
     proposal = create_proposal(
         session,
         run.workspace_id,
@@ -1139,7 +1229,7 @@ def fail_operation(session, operation, error):
     )
 
 
-def execute_operation(operation_id: str, session_factory=None, force_resume=False, settings_override=None):
+def execute_operation(operation_id: str, session_factory=None, force_resume=False, settings_override=None, defer_failure=False):
     from .db import SessionLocal
 
     factory = session_factory or SessionLocal
@@ -1177,10 +1267,14 @@ def execute_operation(operation_id: str, session_factory=None, force_resume=Fals
                     cached_external_result = reservation.output_json
                 else:
                     message = "An earlier external call may have incurred cost. Automatic retry is blocked; inspect provider usage before explicitly creating a new run."
-                    fail_operation(session, op, message)
+                    op.result_json = {**(op.result_json or {}), "error_type": "UncertainExternalCall", "error_retryable": False}
+                    if defer_failure:
+                        op.status, op.error, op.completed_at = "retrying", message, None
+                    else:
+                        fail_operation(session, op, message)
                     if op.kind == "research":
-                        run.status, run.error, run.completed_at = "failed", message, m.utcnow()
-                        run_event(session, run, "run.failed", {"error": message})
+                        run.status, run.error, run.completed_at = ("retrying" if defer_failure else "failed"), message, (None if defer_failure else m.utcnow())
+                        run_event(session, run, "run.attempt_failed" if defer_failure else "run.failed", {"error": message})
                     session.commit()
                     return serialize(op)
             else:
@@ -1196,9 +1290,9 @@ def execute_operation(operation_id: str, session_factory=None, force_resume=Fals
                 session.add(reservation)
                 session.flush()
             reservation_id = reservation.id
-        op.status, op.started_at, op.error = "running", m.utcnow(), None
+        op.status, op.started_at, op.error, op.completed_at = "running", m.utcnow(), None, None
         if op.kind == "research":
-            run.status, run.error = "running", None
+            run.status, run.error, run.completed_at = "running", None, None
         session.commit()
 
     def external_research_call(**kwargs):
@@ -1250,8 +1344,18 @@ def execute_operation(operation_id: str, session_factory=None, force_resume=Fals
             if op.status == "succeeded":
                 return serialize(op)
             if op.kind == "ingest":
-                from .processing import ingest_operation
+                from .processing import archive_ingestion, ingest_operation
 
+                if not (op.result_json or {}).get("archival_complete"):
+                    archive_ingestion(session, op)
+                    # Original identity/bytes survive all later parser/quality failures.
+                    session.commit()
+                    if session.bind.dialect.name == "sqlite":
+                        session.execute(update(m.Operation).where(m.Operation.id == operation_id)
+                                        .values(status=m.Operation.status))
+                    op = session.scalar(select(m.Operation).where(m.Operation.id == operation_id).with_for_update())
+                    if op.status == "succeeded":
+                        return serialize(op)
                 result = ingest_operation(session, op)
                 if op.input_json.get("watch_id"):
                     from .continuous import after_ingestion
@@ -1310,8 +1414,29 @@ def execute_operation(operation_id: str, session_factory=None, force_resume=Fals
                 if isinstance(exc, (DomainError, ValueError))
                 else f"{type(exc).__name__}: processing failed; consult server logs"
             )
-            fail_operation(session, op, message)
-            if op.kind == "ingest" and op.input_json.get("type") == "url":
+            from .parsers import ParseError
+            from .processing import PipelineError
+            from .security import UnsafeURLError
+
+            deterministic = isinstance(exc, (ParseError, PipelineError, UnsafeURLError)) or (
+                isinstance(exc, DomainError) and exc.status_code < 500
+            )
+            if defer_failure or op.result_json:
+                op.result_json = {**(op.result_json or {}), "error_type": type(exc).__name__,
+                                  "error_retryable": not deterministic}
+            if defer_failure:
+                op.status, op.error, op.completed_at = "retrying", str(message)[:2000], None
+                emit_event(session, op.workspace_id, op.project_id, "operation.attempt_failed",
+                           {"operation_id": op.id, "error": op.error, "retryable": not deterministic})
+            else:
+                fail_operation(session, op, message)
+            archived_id = (op.result_json or {}).get("capture_id")
+            if op.kind in {"ingest", "reprocess"} and (archived_id or op.input_json.get("capture_id")):
+                cap = scoped(session, m.Capture, archived_id or op.input_json["capture_id"], op.workspace_id, op.project_id)
+                session.add(m.FetchObservation(workspace_id=op.workspace_id, project_id=op.project_id,
+                                              source_id=cap.source_id, capture_id=cap.id, status="processing_failed",
+                                              error=message, metadata_json={"operation_id": op.id, "archival_complete": True}))
+            if op.kind == "ingest" and not archived_id and op.input_json.get("type") == "url":
                 try:
                     from .schemas import declared_original_url
 
@@ -1342,16 +1467,15 @@ def execute_operation(operation_id: str, session_factory=None, force_resume=Fals
                         )
             if op.kind == "research":
                 run = session.get(m.ResearchRun, op.input_json["run_id"])
-                run.status, run.error, run.completed_at = "failed", message, m.utcnow()
+                run.status, run.error, run.completed_at = ("retrying" if defer_failure else "failed"), message, (None if defer_failure else m.utcnow())
                 if research_context:
                     for lead in research_context.get("leads", []):
-                        lead.update(
-                            status="unverified", evidence_eligible=False, transaction_rolled_back=True
-                        )
-                        for key in ("capture_id", "document_id", "operation_id"):
-                            lead.pop(key, None)
+                        # Acquisition commits independently; only research/proposal work rolled back.
+                        lead["research_transaction_rolled_back"] = True
+                        if lead.get("status") != "saved":
+                            lead.update(status="unverified", evidence_eligible=False)
                     run.result_json = {"discovery": research_context, "proposal_created": False}
-                run_event(session, run, "run.failed", {"error": message})
+                run_event(session, run, "run.attempt_failed" if defer_failure else "run.failed", {"error": message})
             session.commit()
             return serialize(op)
 
@@ -1395,6 +1519,14 @@ def execute_research_run(run_id, session_factory=None, force_resume=False):
 def export_project(session, workspace_id, project_id):
     from .extensions import PipelineRevision
     from .scheduling import SourceWatch
+    from .scholarly import (
+        DiscoveredWork,
+        WorkAlias,
+        WorkMetadataReview,
+        WorkObservation,
+        WorkReading,
+        work_record,
+    )
 
     proj = project(session, workspace_id, project_id)
     tables = (
@@ -1415,6 +1547,11 @@ def export_project(session, workspace_id, project_id):
         m.ClaimEvidence,
         PipelineRevision,
         SourceWatch,
+        DiscoveredWork,
+        WorkAlias,
+        WorkObservation,
+        WorkReading,
+        WorkMetadataReview,
     )
     manifest = {
         "schema_version": 1,
@@ -1431,7 +1568,7 @@ def export_project(session, workspace_id, project_id):
                     select(model).where(model.workspace_id == workspace_id, model.project_id == project_id)
                 )
             )
-            records = [serialize(o) for o in objects]
+            records = [work_record(session, o) if model is DiscoveredWork else serialize(o) for o in objects]
             if model is SourceWatch:
                 # Portable configuration, not live connector cursors or scheduler state.
                 for record in records:

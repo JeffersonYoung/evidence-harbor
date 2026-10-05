@@ -9,6 +9,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import yaml
 
@@ -453,8 +454,8 @@ def _read_upload(path: str, limit: int, settings=None) -> bytes:
     return data
 
 
-def ingest_operation(session, operation) -> dict:
-    """Worker entry point. Domain owns transaction/status; this never commits."""
+def archive_ingestion(session, operation) -> dict:
+    """Acquire and register raw identity. Caller commits before attempting parsing."""
     from . import domain
     from .config import settings as default_settings
 
@@ -464,7 +465,10 @@ def ingest_operation(session, operation) -> dict:
     configuration = inputs.get("pipeline_config", inputs.get("pipeline"))
     config = load_pipeline(None if configuration == {} else configuration)
     max_bytes = config.stages[0].options["max_bytes"]
-    metadata = {}
+    scope = inputs.get("content_scope", "unspecified")
+    if scope not in {"unspecified", "abstract", "fulltext"}:
+        raise PipelineError("Metadata-only records must use discovered-works, not document ingestion")
+    metadata = {"content_scope": scope, "scope_basis": "caller_declared"}
     provenance = inputs.get("discovery_provenance")
     if isinstance(provenance, dict):
         metadata["discovery_provenance"] = {
@@ -529,34 +533,69 @@ def ingest_operation(session, operation) -> dict:
             )
     else:
         raise PipelineError("Unsupported ingestion input type")
-    content_store = (
-        get_store()
-        if os.environ.get("STORAGE_BACKEND", "local") == "s3"
-        else LocalContentStore(settings.blob_dir)
-    )
-    result = process_document(
-        raw, media_type, source_url=source_uri, pipeline_config=config, store=content_store
-    )
-    if not result.ready_for_publication:
-        raise PipelineError("Publication gates are incomplete")
-    return domain.store_capture(
-        session,
-        workspace_id=operation.workspace_id,
-        project_id=operation.project_id,
-        source_uri=source_uri,
-        kind=kind,
-        title=inputs.get("title") or result.title or inputs.get("filename") or source_uri,
-        raw_bytes=raw,
-        media_type=media_type,
-        extracted_text=result.extracted_text,
-        blocks=result.blocks,
-        parser=result.parser_version,
-        metadata={**result.metadata, **metadata},
-        access_scope=inputs.get("access_scope", "workspace"),
-        representation_variant=inputs.get("representation_variant", "default"),
-        classification=inputs.get("classification", "internal"),
+    file_hint = inputs.get("filename", "") if kind == "upload" else urlsplit(source_uri).path
+    if file_hint.lower().endswith(".docx") and media_type in {
+        "application/octet-stream", "application/zip", "application/msword"
+    }:
+        media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    variant = inputs.get("representation_variant", "default")
+    if scope != "unspecified":
+        variant += "@" + scope
+    if len(variant) > 120:
+        raise PipelineError("Scoped representation variant is too long")
+    saved = domain.archive_capture(
+        session, operation.workspace_id, operation.project_id, source_uri, kind,
+        inputs.get("title") or inputs.get("filename") or source_uri, raw, media_type,
+        metadata=metadata, access_scope=inputs.get("access_scope", "workspace"),
+        representation_variant=variant, classification=inputs.get("classification", "internal"),
         blob_dir=settings.blob_dir,
     )
+    operation.result_json = saved
+    session.flush()
+    return saved
+
+
+def ingest_operation(session, operation) -> dict:
+    """Parse saved bytes only; callers determine transaction boundaries."""
+    from sqlalchemy import select
+
+    from . import domain, models
+    from .config import settings as default_settings
+
+    settings = session.info.get("settings", default_settings)
+    if not (operation.result_json or {}).get("archival_complete"):
+        archive_ingestion(session, operation)
+    archived = dict(operation.result_json)
+    capture = domain.scoped(session, models.Capture, archived["capture_id"], operation.workspace_id, operation.project_id)
+    source = domain.scoped(session, models.Source, capture.source_id, operation.workspace_id, operation.project_id)
+    raw = domain.read_blob(capture, settings)
+    inputs = dict(operation.input_json or {})
+    configuration = inputs.get("pipeline_config", inputs.get("pipeline"))
+    content_store = get_store() if os.environ.get("STORAGE_BACKEND", "local") == "s3" else LocalContentStore(settings.blob_dir)
+    result = process_document(raw, capture.media_type, source_url=source.canonical_uri,
+                              pipeline_config=None if configuration == {} else configuration, store=content_store)
+    if not result.ready_for_publication:
+        raise PipelineError("Publication gates are incomplete")
+    metadata = {**capture.metadata_json, **result.metadata}
+    existing = list(session.scalars(select(models.Representation).where(
+        models.Representation.capture_id == capture.id, models.Representation.parser == result.parser_version,
+        models.Representation.content_hash == domain.digest(result.extracted_text),
+    )))
+    for representation in existing:
+        if representation.metadata_json.get("config_hash") != result.config_hash:
+            continue
+        doc = session.scalar(select(models.Document).where(models.Document.representation_id == representation.id))
+        generation = session.scalar(select(models.IndexGeneration).where(
+            models.IndexGeneration.representation_id == representation.id,
+            models.IndexGeneration.index_kind == "lexical"))
+        block_ids = list(session.scalars(select(models.Block.id).where(models.Block.representation_id == representation.id)
+                                         .order_by(models.Block.ordinal)))
+        return {**archived, "document_id": doc.id, "representation_id": representation.id,
+                "index_generation_id": generation.id, "block_ids": block_ids, "representation_changed": False}
+    saved = domain.store_representation(session, operation.workspace_id, operation.project_id, capture,
+                                        result.extracted_text, result.blocks, result.parser_version,
+                                        metadata, inputs.get("title") or result.title or source.title)
+    return {**archived, **saved, "representation_changed": True}
 
 
 def reprocess_operation(session, operation) -> dict:

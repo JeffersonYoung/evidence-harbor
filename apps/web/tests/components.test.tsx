@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { SafeText, Status, Empty, HighlightedQuote } from '../components/ui';
 import { ProposalForm, ResearchForm, IngestForm } from '../components/forms';
+import { isPending } from '../lib/api';
 const noop = () => {};
 test('source script, HTML tags, event handlers and URLs remain escaped text', () => {
   const source =
@@ -25,6 +26,8 @@ test('pending status is labeled honestly and completion is distinct', () => {
   assert.match(renderToStaticMarkup(<Status value="pending" />), /排队中/);
   assert.match(renderToStaticMarkup(<Status value="succeeded" />), /已完成/);
   assert.match(renderToStaticMarkup(<Status value="failed" />), /失败/);
+  assert.match(renderToStaticMarkup(<Status value="retrying" />), /重试中/);
+  assert.equal(isPending('retrying'), true);
 });
 test('manual proposal refuses to render submission without real evidence', () => {
   const html = renderToStaticMarkup(

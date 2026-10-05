@@ -6,7 +6,14 @@ Revises: none
 
 from alembic import op
 
-from backend import auth, continuous, extensions, models, scheduling  # noqa: F401 -- register mappings
+from backend import (  # noqa: F401 -- register mappings
+    auth,
+    continuous,
+    extensions,
+    models,
+    scheduling,
+    scholarly,
+)
 from backend.db import Base
 
 revision = "0001"

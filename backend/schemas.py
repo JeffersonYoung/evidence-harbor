@@ -49,6 +49,7 @@ class ProjectUpdate(StrictModel):
 
 
 class IngestionCreate(StrictModel):
+    content_scope: Literal["unspecified", "abstract", "fulltext"] = "unspecified"
     project_id: str
     type: Literal["url", "text"] = "text"
     url: str | None = Field(default=None, max_length=8192)

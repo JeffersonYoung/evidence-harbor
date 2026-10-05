@@ -45,3 +45,13 @@ The API exposes scoped `/v1/diagnostics`; operational dashboards, paging integra
 ## Verified versus pending
 
 Direct ephemeral PostgreSQL/pgvector and real Temporal integration tests are available in `scripts/run_integration.py`; they require no Docker. The authoring environment cannot run Docker itself and cannot complete Chromium visual acceptance. Live S3, externally credentialed model/search services, Docling OCR assets and an isolated browser service remain explicitly pending environment acceptance.
+
+## Durable attempt state and worker loss
+
+New workflows use the replay-gated `operation-lifecycle-v2` activity contract. Attempt failures remain `retrying` with no completed timestamp; a workflow terminal-failure decision invokes an idempotent finalization activity. Deterministic parse, pipeline, unsafe-URL and client/domain validation errors are nonretryable; transient errors remain bounded by the workflow retry policy. Heartbeats start immediately and repeat every10seconds, with a30-second heartbeat timeout for new operations. Finalization itself retries at most5times with a2-minute attempt limit; a persistent database outage remains a visible recovery problem.
+
+`GET /v1/operations/{id}/execution` reads Temporal's actual workflow status. Unknown/unavailable service state never implies completion. The ordinary operation endpoint identifies whether its status is an inline operation or a durable activity attempt. Explicit retry in durable mode requires a verified terminal failed/cancelled/timed-out workflow; it cannot start another generation merely because an activity attempt failed. On resume, stale completed timestamps are cleared.
+
+Already-scheduled legacy activity commands retain their original timeout and failure contract, including the20-minute operation timeout. Replay markers do not retroactively shorten timers. Read the live execution endpoint when diagnosing these histories. The acceptance suite replays a real legacy history and kills only a disposable worker to verify genuine30-second heartbeat recovery without clock changes.
+
+Deploy immutable release directories or container images. Do not run a persistent worker from a checkout being edited: Temporal's workflow sandbox can load newer workflow definitions while the process still has old activity registrations. Stop/restart all API/worker/dispatcher processes together against the reviewed release, apply migrations against the persistent database, and preserve the database/object-store/Temporal identities. A mixed-code deployment is not a valid parser or recovery acceptance run.

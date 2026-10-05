@@ -206,12 +206,12 @@ export function IngestForm({
           <label className="dropzone">
             <UploadCloud size={30} />
             <strong>{filename || '选择一份资料'}</strong>
-            <span>PDF、HTML、TXT、Markdown · 最大 20 MB</span>
+            <span>PDF、DOCX、HTML、TXT、Markdown · 最大 20 MB</span>
             <input
               name="file"
               type="file"
               required
-              accept=".pdf,.txt,.md,.markdown,.html,.htm,.csv,.json,text/plain,text/html,application/pdf"
+              accept=".pdf,.docx,.txt,.md,.markdown,.html,.htm,.csv,.json,text/plain,text/html,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
               onChange={(e) => {
                 const file = e.target.files?.[0];
                 setFilename(file?.name || '');

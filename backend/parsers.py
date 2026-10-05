@@ -8,15 +8,30 @@ from __future__ import annotations
 import hashlib
 import io
 import os
+import posixpath
 import re
+import stat
 import unicodedata
+import xml.etree.ElementTree as ET
+import zipfile
+import zlib
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
+from urllib.parse import unquote, urlsplit
 
 MAX_TEXT_CHARS = 4_000_000
 MAX_PDF_PAGES = 500
+DOCX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+MAX_DOCX_ENTRIES = 2048
+MAX_DOCX_EXPANDED_BYTES = 64 * 1024 * 1024
+MAX_DOCX_PART_BYTES = 16 * 1024 * 1024
+MAX_DOCX_COMPRESSION_RATIO = 200
+_WORD_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+_REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
+_CONTENT_NS = "http://schemas.openxmlformats.org/package/2006/content-types"
+_WORD = "{" + _WORD_NS + "}"
 
 
 class ParseError(ValueError):
@@ -54,7 +69,7 @@ def _assemble(parts: list[tuple[str, dict]], parser: str, *, title: str = "", wa
         content = normalize_text(content)
         if not content:
             continue
-        if offset + len(content) > MAX_TEXT_CHARS:
+        if offset + (2 if text_parts else 0) + len(content) > MAX_TEXT_CHARS:
             raise ParseError("Extracted text exceeds the character limit")
         if text_parts:
             offset += 2
@@ -94,8 +109,8 @@ class _SavedHTMLParser(HTMLParser):
         tag = tag.lower()
         if tag == "title":
             self.in_title = True
-        hidden = tag in self.HIDDEN_TAGS or "hidden" in attrs or attrs.get("aria-hidden", "").lower() == "true"
-        style = re.sub(r"\s+", "", attrs.get("style", "").lower())
+        hidden = tag in self.HIDDEN_TAGS or "hidden" in attrs or (attrs.get("aria-hidden") or "").lower() == "true"
+        style = re.sub(r"\s+", "", (attrs.get("style") or "").lower())
         hidden = hidden or "display:none" in style or "visibility:hidden" in style
         if tag not in self.VOID_TAGS:
             self.stack.append((tag, hidden))
@@ -187,6 +202,233 @@ def parse_html(data: bytes, *, parser: str = "auto", include_selector: str = "",
     return _assemble(_paragraphs("".join(baseline.parts), {"kind": "html_paragraph"}),
                      "builtin-html-v1/normalizer-v1", title=title, warnings=warnings,
                      metadata={"extraction": "offline_saved_html", "fallback": True, "dom_byte_offsets": False, **selection_metadata})
+
+
+class _DocxXMLBuilder(ET.TreeBuilder):
+    """Reject DTD/entity declarations regardless of XML encoding, before expansion."""
+
+    def __init__(self):
+        super().__init__()
+        self.depth = 0
+        self.elements = 0
+
+    def doctype(self, name, pubid, system):
+        raise ParseError("DOCX XML DTDs and entity declarations are unsupported")
+
+    def start(self, tag, attrs):
+        self.depth += 1
+        self.elements += 1
+        if self.depth > 128 or self.elements > 500_000:
+            raise ParseError("DOCX XML structural limit exceeded")
+        return super().start(tag, attrs)
+
+    def end(self, tag):
+        self.depth -= 1
+        return super().end(tag)
+
+
+def _docx_xml(archive: zipfile.ZipFile, name: str) -> ET.Element:
+    try:
+        with archive.open(name) as part:
+            data = part.read(MAX_DOCX_PART_BYTES + 1)
+        if len(data) > MAX_DOCX_PART_BYTES:
+            raise ParseError("DOCX expanded part size limit exceeded")
+        return ET.fromstring(data, parser=ET.XMLParser(target=_DocxXMLBuilder()))
+    except ParseError:
+        raise
+    except (KeyError, ET.ParseError, zipfile.BadZipFile, RuntimeError, EOFError, OSError, zlib.error) as exc:
+        raise ParseError("DOCX contains a missing, malformed or unreadable XML part") from exc
+
+
+def _docx_relationship_target(name: str, target: str) -> str:
+    # Relationships are inspected only. This parser never follows a URL or extracts a file.
+    target = unquote(target)
+    try:
+        parsed = urlsplit(target)
+    except ValueError as exc:
+        raise ParseError("DOCX external or invalid relationship targets are unsupported") from exc
+    if not target or parsed.scheme or parsed.netloc or target.startswith("//") or "\\" in target:
+        raise ParseError("DOCX external or invalid relationship targets are unsupported")
+    if any(ord(char) < 32 for char in target):
+        raise ParseError("DOCX relationship target contains control characters")
+    source_directory = "" if name == "_rels/.rels" else posixpath.dirname(posixpath.dirname(name))
+    if parsed.path.startswith("/"):
+        source_directory = ""
+    resolved = posixpath.normpath(posixpath.join(source_directory, parsed.path.lstrip("/")))
+    if resolved == ".." or resolved.startswith("../"):
+        raise ParseError("DOCX relationship path traversal is unsupported")
+    return resolved.lstrip("/")
+
+
+def parse_docx(data: bytes, *, parser: str = "auto") -> ParsedDocument:
+    """Conservative, offline WordprocessingML body text with physical-cell provenance.
+
+    Only standard, macro-free Transitional OOXML DOCX is supported. No rendering,
+    field evaluation, embedded-object execution, network access or ZIP extraction.
+    """
+    if parser not in {"auto", "builtin"}:
+        raise ParseError("Unregistered DOCX parser")
+    if len(data) > 100 * 1024 * 1024:
+        raise ParseError("Raw parser input exceeds 100 MiB")
+    try:
+        archive = zipfile.ZipFile(io.BytesIO(data))
+    except (zipfile.BadZipFile, EOFError, OSError) as exc:
+        raise ParseError("Saved DOCX is not a valid ZIP package") from exc
+    with archive:
+        entries = archive.infolist()
+        if len(entries) > MAX_DOCX_ENTRIES:
+            raise ParseError("DOCX ZIP entry count limit exceeded")
+        names, expanded_bytes = set(), 0
+        for entry in entries:
+            name = entry.filename
+            normalized = name.rstrip("/")
+            decoded_name = unquote(normalized)
+            if (not normalized or name != entry.orig_filename or "\\" in name or ":" in name
+                    or name.startswith("/") or any(part in {".", "..", ""} for part in normalized.split("/"))
+                    or decoded_name.startswith("/") or "\\" in decoded_name or ":" in decoded_name
+                    or any(part in {".", "..", ""} for part in decoded_name.split("/"))
+                    or any(ord(char) < 32 for char in decoded_name)):
+                raise ParseError("DOCX ZIP path traversal or invalid member name")
+            if name in names:
+                raise ParseError("DOCX ZIP contains duplicate member names")
+            names.add(name)
+            if entry.flag_bits & 1:
+                raise ParseError("Encrypted DOCX ZIP members are unsupported")
+            if stat.S_ISLNK(entry.external_attr >> 16):
+                raise ParseError("DOCX ZIP symbolic links are unsupported")
+            if entry.compress_type not in {zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED}:
+                raise ParseError("DOCX ZIP compression method is unsupported")
+            expanded_bytes += entry.file_size
+            if entry.file_size > MAX_DOCX_PART_BYTES or expanded_bytes > MAX_DOCX_EXPANDED_BYTES:
+                raise ParseError("DOCX ZIP expanded size limit exceeded")
+            if entry.file_size > max(1, entry.compress_size) * MAX_DOCX_COMPRESSION_RATIO:
+                raise ParseError("DOCX ZIP compression ratio limit exceeded")
+
+        content_types = _docx_xml(archive, "[Content_Types].xml")
+        if content_types.tag != "{" + _CONTENT_NS + "}Types":
+            raise ParseError("DOCX content types are invalid")
+        main_types = [item.get("ContentType") for item in content_types
+                      if item.get("PartName") == "/word/document.xml"]
+        if main_types != ["application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"]:
+            raise ParseError("DOCX requires a standard macro-free word/document.xml part")
+        if any("macroenabled" in item.get("ContentType", "").lower()
+               or "vbaproject" in item.get("ContentType", "").lower() for item in content_types):
+            raise ParseError("Macro-enabled DOCX packages are unsupported")
+        if any(name.lower().endswith("vbaproject.bin") for name in names):
+            raise ParseError("Macro-enabled DOCX packages are unsupported")
+
+        office_parts = []
+        for name in sorted(names):
+            if not name.lower().endswith(".rels"):
+                continue
+            relationships = _docx_xml(archive, name)
+            if relationships.tag != "{" + _REL_NS + "}Relationships":
+                raise ParseError("DOCX relationships are invalid")
+            for relationship in relationships:
+                mode = relationship.get("TargetMode", "Internal")
+                if mode.lower() != "internal":
+                    raise ParseError("DOCX external relationships are unsupported; no targets were fetched")
+                target = _docx_relationship_target(name, relationship.get("Target", ""))
+                if name == "_rels/.rels" and relationship.get("Type", "").endswith("/officeDocument"):
+                    office_parts.append(target)
+        if office_parts != ["word/document.xml"]:
+            raise ParseError("DOCX requires one internal main-document relationship")
+
+        document = _docx_xml(archive, "word/document.xml")
+        if document.tag != _WORD + "document":
+            raise ParseError("DOCX requires standard Transitional WordprocessingML")
+        body = document.find(_WORD + "body")
+        if body is None:
+            raise ParseError("DOCX main document has no body")
+        tracked = {"ins", "del", "moveFrom", "moveTo", "moveFromRangeStart", "moveFromRangeEnd",
+                   "moveToRangeStart", "moveToRangeEnd", "cellIns", "cellDel", "cellMerge",
+                   "customXmlInsRangeStart", "customXmlInsRangeEnd", "customXmlDelRangeStart",
+                   "customXmlDelRangeEnd", "customXmlMoveFromRangeStart", "customXmlMoveFromRangeEnd",
+                   "customXmlMoveToRangeStart", "customXmlMoveToRangeEnd", "numberingChange"}
+        tags = {element.tag for element in document.iter()}
+        if any(tag.startswith(_WORD) and (tag[len(_WORD):] in tracked or tag.endswith("Change")) for tag in tags):
+            raise ParseError("DOCX tracked changes are unsupported; accept or reject revisions before import")
+        if _WORD + "altChunk" in tags:
+            raise ParseError("DOCX alternative-format content is unsupported")
+
+        warnings = [("DOCX extracts main-body paragraph text and physical table cells only; pagination, "
+                     "bounding boxes, numbering labels, style-based visibility and rendered layout are unavailable")]
+        omitted_parts = sorted(name for name in names if re.fullmatch(
+            r"word/(?:header\d*|footer\d*|footnotes|endnotes|comments)\.xml", name))
+        if omitted_parts:
+            warnings.append("DOCX auxiliary text parts were not extracted: " + ", ".join(omitted_parts))
+        excluded = {_WORD + name for name in ("drawing", "pict", "object", "txbxContent")}
+        math_ns = "{http://schemas.openxmlformats.org/officeDocument/2006/math}"
+        excluded.update({math_ns + "oMath", math_ns + "oMathPara"})
+        if tags & excluded:
+            warnings.append("DOCX drawings, embedded objects, text boxes or equations were omitted")
+        alternate_content = "{http://schemas.openxmlformats.org/markup-compatibility/2006}AlternateContent"
+        if alternate_content in tags:
+            excluded.add(alternate_content)
+            warnings.append("DOCX alternate compatibility representations were omitted")
+        if _WORD + "sym" in tags:
+            warnings.append("DOCX font-specific symbols were omitted; their Unicode representation is unavailable")
+        if tags & {_WORD + "instrText", _WORD + "fldSimple", _WORD + "fldChar"}:
+            warnings.append("DOCX fields use saved display text only; field instructions were not evaluated")
+        paragraph_indices = {id(element): index for index, element in enumerate(document.iter(_WORD + "p"), 1)}
+        parts, table_count = [], 0
+
+        def paragraph_text(element):
+            if element.tag in excluded:
+                return ""
+            if element.tag == _WORD + "r":
+                properties = element.find(_WORD + "rPr")
+                if properties is not None and any(
+                    item.tag in {_WORD + "vanish", _WORD + "webHidden"}
+                    and item.get(_WORD + "val", "true").lower() not in {"0", "false", "off"}
+                    for item in properties
+                ):
+                    return ""
+            if element.tag == _WORD + "t":
+                return element.text or ""
+            if element.tag == _WORD + "tab":
+                return "\t"
+            if element.tag in {_WORD + "br", _WORD + "cr"}:
+                return "\n"
+            if element.tag == _WORD + "noBreakHyphen":
+                return "\u2011"
+            if element.tag == _WORD + "softHyphen":
+                return "\u00ad"
+            return "".join(paragraph_text(child) for child in element)
+
+        def visit(element, tables):
+            nonlocal table_count
+            if element.tag in excluded:
+                return
+            if element.tag == _WORD + "tbl":
+                table_count += 1
+                tables = [*tables, {"table_index": table_count, "row_index": 0, "cell_index": 0,
+                                   "cell_paragraph_index": 0}]
+            elif element.tag == _WORD + "tr" and tables:
+                tables[-1].update(row_index=tables[-1]["row_index"] + 1, cell_index=0)
+            elif element.tag == _WORD + "tc" and tables:
+                tables[-1].update(cell_index=tables[-1]["cell_index"] + 1, cell_paragraph_index=0)
+            elif element.tag == _WORD + "p":
+                locator = {"kind": "docx_paragraph", "part": "word/document.xml",
+                           "paragraph_index": paragraph_indices[id(element)]}
+                if tables:
+                    tables[-1]["cell_paragraph_index"] += 1
+                    locator.update(kind="docx_table_cell_paragraph", **tables[-1])
+                    if len(tables) > 1:
+                        locator["parent_cells"] = [dict(table) for table in tables[:-1]]
+                parts.append((paragraph_text(element), locator))
+                return
+            for child in element:
+                visit(child, tables)
+
+        visit(body, [])
+        return _assemble(parts, "builtin-docx-v1/normalizer-v1", warnings=warnings,
+                         metadata={"extraction": "offline_saved_docx", "scope": "main_document_body",
+                                   "layout_fidelity": "logical_paragraphs_and_physical_cells", "degraded": True,
+                                   "bbox_available": False, "page_numbers": "unavailable", "ocr": False,
+                                   "table_count": table_count, "table_structure": "physical_cells_only",
+                                   "locator_indices": "one_based", "omitted_parts": omitted_parts,
+                                   "tracked_changes": "rejected", "external_relationships": "rejected"})
 
 
 def _parse_docling(data: bytes, *, options: dict | None = None) -> ParsedDocument:
@@ -298,6 +540,8 @@ def parse_pdf(data: bytes, *, parser: str = "auto", options: dict | None = None)
 def parse_document(data: bytes, media_type: str, options: dict | None = None) -> ParsedDocument:
     options = options or {}
     media_type = media_type.lower().split(";", 1)[0].strip()
+    if media_type == DOCX_MEDIA_TYPE:
+        return parse_docx(data, parser=options.get("docx_parser", "auto"))
     if media_type == "application/pdf" or data.lstrip().startswith(b"%PDF-"):
         return parse_pdf(data, parser=options.get("pdf_parser", "auto"), options=options)
     if media_type in {"text/html", "application/xhtml+xml"}:

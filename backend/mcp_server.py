@@ -157,8 +157,16 @@ def ingest_source(project_id: str, url: str, title: str = "") -> dict:
 
 @mcp.tool()
 def get_ingestion_status(operation_id: str) -> dict:
-    """Wait for succeeded; failed or pending sources must not be cited as read evidence."""
-    return request("GET", f"/v1/operations/{resource_id(operation_id)}")
+    """Read ingestion state. A failed activity attempt is not a terminal durable workflow.
+
+    Temporal calls include live execution status; unknown workflow state never proves completion.
+    Only succeeded processing supplies read-ready documents/evidence; archived bytes alone do not.
+    """
+    path = f"/v1/operations/{resource_id(operation_id)}"
+    result = request("GET", path)
+    if result.get("execution_backend") == "temporal":
+        result["execution"] = request("GET", path + "/execution")
+    return result
 
 
 @mcp.tool()

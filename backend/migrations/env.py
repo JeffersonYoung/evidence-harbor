@@ -3,7 +3,14 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from backend import auth, continuous, extensions, models, scheduling  # noqa: F401 -- register mappings
+from backend import (  # noqa: F401 -- register mappings
+    auth,
+    continuous,
+    extensions,
+    models,
+    scheduling,
+    scholarly,
+)
 from backend.config import settings
 from backend.db import Base
 

@@ -334,6 +334,7 @@ def hybrid_search(
     from sqlalchemy import select
 
     from . import domain, models
+    from .scholarly import content_scope
 
     lexical = domain.search(session, workspace_id, project_id, query, limit=100)
     provider = embedding_provider(provider_name)
@@ -383,6 +384,7 @@ def hybrid_search(
                 "text": block.text,
                 "locator_json": block.locator_json,
                 "classification": source.classification,
+                "content_scope": content_scope(session, rep, cap),
             }
     ranked = reciprocal_rank_fusion(rankings)
     return {

@@ -49,7 +49,7 @@ The local Dockerfile installs the lightweight PDF reader; install `.[pdf]` and p
 ## What you can do
 
 1. Create a research project and its open questions
-2. Upload saved HTML, text or PDF, or submit a public URL
+2. Upload saved HTML, text, PDF or safe DOCX, or submit a public URL
 3. Inspect immutable captures and parser representations, quality flags and exact block locations
 4. Search Chinese/English text, read the underlying blocks and register verified evidence
 5. Run bounded local/external research, or let a connected agent propose an update through MCP
@@ -92,6 +92,10 @@ Configure secrets only through the deployment environment. Do not paste keys int
 Research configuration carries model, reasoning effort, document/search/tool/time limits and a cost ceiling. A durable reservation prevents automatic retries from silently issuing a second paid call after an uncertain result. Cached successful responses can be reused; an uncertain paid attempt requires operator review and a new explicit run. Provider execution is never guaranteed byte-for-byte deterministic.
 
 Contact regex redaction is deliberately limited and is **not a comprehensive DLP or legal compliance system**. Operators must review data-sharing policy for their deployment.
+
+## Scholarly discovery and archive-first processing
+
+The [scholarly discovery API](docs/SCHOLARLY_DISCOVERY.md) stores deduplicated DOI/arXiv/title-author leads with immutable provenance. Metadata and abstracts are never counted as papers read. Fulltext availability requires a saved, verified, provenance-bound source and explicit artifact review; reading completion is not inferred. Failed parsing still leaves an authorized raw capture for inspection, export and bounded reprocessing.
 
 ## Vector retrieval
 

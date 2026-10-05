@@ -157,7 +157,7 @@ export function displayDate(value?: string) {
   }).format(new Date(value));
 }
 export function isPending(status: string) {
-  return ['pending', 'running', 'queued', 'in_progress'].includes(status);
+  return ['pending', 'running', 'retrying', 'queued', 'in_progress'].includes(status);
 }
 export function safeHttpUrl(value: string) {
   try {

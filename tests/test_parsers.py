@@ -51,6 +51,25 @@ def test_saved_html_builtin_hides_scripts_navigation_and_invisible_text():
     assert_exact_blocks(parsed)
 
 
+@pytest.mark.parametrize('html_parser', ['builtin', 'trafilatura'])
+def test_saved_html_accepts_valueless_style_and_aria_attributes(html_parser):
+    # Original synthetic HTML test data, dedicated to the public domain under CC0-1.0.
+    html = b'''<!doctype html><html><head><title>Nullable attribute fixture</title></head>
+    <body><article><h1>Saved evidence</h1>
+    <p style>Visible evidence describes careful measurements, independent replication,
+    and explicit limitations of the synthetic research study.</p>
+    <p aria-hidden>Additional visible context records how the measurements were checked
+    and why uncertainty remains important when interpreting the reported findings.</p>
+    <p style aria-hidden>Final visible limitations remain available for exact quotations.</p>
+    </article></body></html>'''
+    parsed = parse_document(html, 'text/html', {'html_parser': html_parser})
+    assert 'Visible evidence describes careful measurements' in parsed.text
+    assert 'Additional visible context' in parsed.text
+    assert 'Final visible limitations' in parsed.text
+    assert parsed.title == 'Nullable attribute fixture'
+    assert_exact_blocks(parsed)
+
+
 def test_real_trafilatura_extracts_saved_article():
     content = ('Research evidence demonstrates that urban tree cover reduces local heat. '
                'The study compares measurements from several neighborhoods over two years. '

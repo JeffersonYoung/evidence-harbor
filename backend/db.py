@@ -38,7 +38,7 @@ def init_db(bind=None):
     from . import models  # noqa: F401 -- register mappings
 
     try:
-        from . import auth, continuous, extensions, scheduling  # noqa: F401 -- register mappings
+        from . import auth, continuous, extensions, scheduling, scholarly  # noqa: F401 -- register mappings
     except ImportError:
         pass
     Base.metadata.create_all(bind or engine)

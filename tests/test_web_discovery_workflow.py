@@ -102,11 +102,14 @@ def test_snippet_only_match_cannot_create_evidence_and_retry_does_not_repeat_dis
     assert run['status'] == 'failed'
     assert 'No local evidence' in run['error']
     lead = run['result_json']['discovery']['leads'][0]
-    assert lead['status'] == 'unverified' and lead['evidence_eligible'] is False
-    assert lead['transaction_rolled_back'] is True
-    assert not {'capture_id', 'document_id', 'operation_id'} & lead.keys()
+    assert lead['status'] == 'saved' and lead['evidence_eligible'] is True
+    assert lead['research_transaction_rolled_back'] is True
+    assert {'capture_id', 'document_id', 'operation_id'} <= lead.keys()
     with runtime.session_factory() as session:
-        for model in (m.Capture, m.Representation, m.Evidence, m.Proposal):
+        # Successful acquisition is durable even when nothing answers the research question.
+        for model in (m.Capture, m.Representation):
+            assert session.scalar(select(func.count()).select_from(model)) == 1
+        for model in (m.Evidence, m.Proposal):
             assert session.scalar(select(func.count()).select_from(model)) == 0
     checked(client.post(f'/v1/operations/{requested["operation_id"]}/retry'), 202)
     blocked = checked(client.get(f'/v1/operations/{requested["operation_id"]}'))

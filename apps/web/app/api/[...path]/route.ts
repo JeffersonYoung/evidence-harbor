@@ -15,6 +15,7 @@ const ALLOWED_ROOTS = new Set([
   'representations',
   'projects',
   'documents',
+  'discovered-works',
   'operations',
   'questions',
   'research-runs',

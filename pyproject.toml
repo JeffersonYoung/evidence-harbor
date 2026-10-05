@@ -38,5 +38,6 @@ target-version = "py312"
 "backend/auth.py" = ["B008"]
 "backend/extensions.py" = ["B008"]
 "backend/scheduling.py" = ["B008"]
+"backend/scholarly.py" = ["B008"]
 # Service bootstrap runs blocking subprocess setup before its async test workload.
 "scripts/run_integration.py" = ["ASYNC220", "ASYNC221"]

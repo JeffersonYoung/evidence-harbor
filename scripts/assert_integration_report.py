@@ -16,6 +16,8 @@ REQUIRED = {
         "tests.test_temporal_integration::test_temporal_durable_dispatch_retry_and_idempotency",
         "tests.test_temporal_integration::test_real_temporal_schedule_reconcile_and_pause",
         "tests.test_temporal_integration::test_terminal_workflow_failure_then_explicit_api_retry_new_generation",
+        "tests.test_temporal_integration::test_new_workflow_code_replays_real_history_created_without_heartbeat_timeout",
+        "tests.test_temporal_integration::test_worker_process_loss_recovers_on_real_heartbeat_timeout_without_clock_changes",
     },
     "s3": {
         "tests.test_s3_integration::test_live_s3_upload_pipeline_evidence_export_and_reprocess",

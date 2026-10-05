@@ -6,6 +6,7 @@ export function Status({ value }: { value: string }) {
   const status: Record<string, string> = {
     pending: '排队中',
     running: '处理中',
+    retrying: '重试中',
     queued: '排队中',
     succeeded: '已完成',
     completed: '已完成',

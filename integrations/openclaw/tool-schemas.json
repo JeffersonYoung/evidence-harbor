@@ -57,7 +57,7 @@
   },
   {
     "name": "get_ingestion_status",
-    "description": "Wait for succeeded; failed or pending sources must not be cited as read evidence.",
+    "description": "Read ingestion state. A failed activity attempt is not a terminal durable workflow.\n\n    Temporal calls include live execution status; unknown workflow state never proves completion.\n    Only succeeded processing supplies read-ready documents/evidence; archived bytes alone do not.\n    ",
     "inputSchema": {
       "properties": {
         "operation_id": {
