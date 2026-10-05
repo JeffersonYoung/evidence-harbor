@@ -206,7 +206,10 @@ try {
         .filter({ hasText: /^更正展示元数据$/ })
         .click();
       await page.getByLabel('标题', { exact: true }).fill('UI reviewed lead');
-      await page.getByLabel('作者（每行一位）', { exact: true }).fill('Reviewed Author');
+      await page
+        .getByRole('dialog')
+        .getByLabel(/^作者（每行一位）/)
+        .fill('Reviewed Author');
       await page
         .getByLabel('更正依据链接', { exact: true })
         .fill('https://example.org/metadata-proof');
