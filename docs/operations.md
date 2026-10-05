@@ -65,3 +65,9 @@ Hosted CI uses disposable test databases. A green GitHub workflow does not back 
 ### Bounded reprocessing for demanding documents
 
 The registered `extract` stage defaults to `parser_memory_mb: 1024` and `parser_timeout_seconds: 30`. An operator can submit an explicit safe pipeline to `/v1/captures/{id}/reprocess`, for example2048 MiB and60seconds for a saved PDF that exceeded the default. These remain bounded settings within the registry's supported128–8192 MiB and1–180second ranges, under the same isolated parser and source-map/quality gates. They do not raise global defaults or authorize unrestricted execution. Allocate corresponding worker/container capacity and bounded concurrency; a host limit may still be lower than the requested parser budget. Preserve the failed attempt and capture hash when comparing results.
+
+## Off-host durability admission
+
+See [off-host recovery](operations/offhost-recovery.md) for complete quiesced recovery-set upload, checksum verification, fresh-directory download and explicit durable-run preflight. A local backup, project export, S3 endpoint or green CI alone does not establish an independent recoverable system. Declaring `DURABLE_CONTINUOUS_RUN=true` requires a fresh matching remote receipt and separate native-restore/failure-domain attestations at process startup.
+
+The [2026-10-05 environment-loss incident](operations/2026-10-05-environment-loss.md) left private study state unrestored and the 24-hour acceptance failed/incomplete. Historical short-run tests and published reports do not change that result.

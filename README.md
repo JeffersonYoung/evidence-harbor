@@ -4,6 +4,8 @@ A self-hosted continuous research workspace: versioned source material, configur
 
 **The invariant:** a report cites the saved capture, representation and exact structural block that was actually read. Changing a source, parser or embedding model never silently changes old evidence.
 
+> Operational acceptance: the 2026-10-05 environment rollback left the private 24-hour study **failed/incomplete and unrestored**. Published source and reports survived; same-host backups did not establish disaster durability. See the [incident record](docs/operations/2026-10-05-environment-loss.md) and [off-host recovery/admission guide](docs/operations/offhost-recovery.md).
+
 ## Run locally
 
 Requirements: Python 3.12+, Node 22+, or Docker Compose. No model/search credentials are needed for the offline extractive research baseline.

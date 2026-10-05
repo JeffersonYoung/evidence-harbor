@@ -84,3 +84,44 @@ def test_live_s3_immutable_deduplicated_put(s3_api):
     assert store.verify(one.sha256)
     objects = client.list_objects_v2(Bucket=bucket, Prefix=one.key)
     assert len(objects.get("Contents", [])) == 1
+
+
+def test_live_s3_recovery_set_roundtrip_is_not_independent_restore_acceptance(s3_api, tmp_path):
+    """Real S3 byte transport of synthetic artifacts; no native DB restore claim."""
+    from backend.recovery import COMPONENTS, FORMAT, retrieve_set, timestamp, upload_set
+
+    _, store, client, bucket = s3_api
+    roots = {}
+    for name in COMPONENTS:
+        root = tmp_path / "snapshot" / name
+        root.mkdir(parents=True)
+        (root / "fixture.bin").write_bytes((name + " synthetic backup artifact").encode())
+        roots[name] = str(root)
+    spec = {
+        "format": FORMAT, "engine": "postgresql-temporal", "run_id": "ci-fixture",
+        "snapshot_id": "synthetic-1", "snapshot_at": timestamp(), "source_failure_domain": "disposable-ci-host",
+        "consistency": "writers-stopped", "operator": "test fixture",
+        "quiescence_evidence": "Synthetic fixture has no services or live writers",
+        "schema_revision": "0009", "release_commit": "synthetic-fixture",
+        "configuration_secrets_excluded": True, "components": roots,
+    }
+    manifest_hash = upload_set(spec, store)
+    restored = tmp_path / "fresh-download"
+    receipt = retrieve_set(store, manifest_hash, restored)
+    assert receipt["all_bytes_verified"] and not receipt["native_restore_tested"]
+    assert receipt["components"] == sorted(COMPONENTS)
+    for name in COMPONENTS:
+        assert (restored / name / "fixture.bin").read_bytes() == (name + " synthetic backup artifact").encode()
+    with pytest.raises(ValueError, match="must not exist"):
+        retrieve_set(store, manifest_hash, restored)
+    # A missing required remote object prevents another successful receipt/download.
+    import json
+
+    from backend.storage import StorageError
+
+    manifest = json.loads(store.get(manifest_hash))
+    chunk = manifest["files"][0]["chunks"][0]
+    client.delete_object(Bucket=bucket, Key=store._key(chunk))
+    with pytest.raises(StorageError):
+        retrieve_set(store, manifest_hash, tmp_path / "incomplete")
+    assert not (tmp_path / "incomplete").exists()

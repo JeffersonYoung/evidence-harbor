@@ -125,6 +125,9 @@ def sync_source_activity(watch_id: str) -> dict:
 
 
 async def main():
+    from .config import Settings
+
+    Settings()  # Validate declared durability before connecting or polling any work.
     logging.basicConfig(level=logging.INFO)
     address = os.getenv("TEMPORAL_ADDRESS", "localhost:7233")
     while True:

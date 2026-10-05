@@ -20,6 +20,7 @@ REQUIRED = {
         "tests.test_temporal_integration::test_worker_process_loss_recovers_on_real_heartbeat_timeout_without_clock_changes",
     },
     "s3": {
+        "tests.test_s3_integration::test_live_s3_recovery_set_roundtrip_is_not_independent_restore_acceptance",
         "tests.test_s3_integration::test_live_s3_upload_pipeline_evidence_export_and_reprocess",
         "tests.test_s3_integration::test_live_s3_immutable_deduplicated_put",
     },

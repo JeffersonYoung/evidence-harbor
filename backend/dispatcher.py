@@ -59,9 +59,11 @@ async def dispatch_once(client, session_factory=SessionLocal) -> int:
 
 
 async def main():
+    from .config import Settings
     from .outbox import deliver_outbox_once
     from .scheduling import reconcile_schedules
 
+    Settings()  # Recheck admission at process entry before dispatch or notifications.
     logging.basicConfig(level=logging.INFO)
     while True:
         try:

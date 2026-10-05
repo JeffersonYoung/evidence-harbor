@@ -57,6 +57,11 @@ class Settings:
     search_limit: int = 100
 
     def __post_init__(self):
+        from .recovery import check_declared_durability
+
+        admission = check_declared_durability()
+        if admission and (not self.database_url.startswith("postgresql") or self.inline_worker):
+            raise ValueError("Declared durable runs require PostgreSQL and the Temporal worker mode")
         configured_token = os.getenv("API_TOKEN", "").strip()
         placeholders = {
             "change-me",
