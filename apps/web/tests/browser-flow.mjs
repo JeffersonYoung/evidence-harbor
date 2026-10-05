@@ -180,8 +180,16 @@ try {
     await page.getByText('Remote work can improve focus.', { exact: true }).waitFor();
     await page.getByLabel('文档版本', { exact: true }).selectOption('2');
     await page.locator('.section-locks summary').click();
-    await page.locator('.section-locks').getByLabel('限制', { exact: true }).check();
-    await page.waitForTimeout(300);
+    const sectionLock = page.locator('.section-locks').getByLabel('限制', { exact: true });
+    const lockResponse = page.waitForResponse(
+      (response) =>
+        response.url().endsWith('/api/documents/' + reportId + '/locks') &&
+        response.request().method() === 'PATCH',
+    );
+    await sectionLock.click();
+    assert.equal((await lockResponse).status(), 200);
+    await page.waitForFunction((input) => input.checked, await sectionLock.elementHandle());
+    assert.equal(await sectionLock.isChecked(), true);
     const r = await context.request.get(base + '/api/documents/' + reportId + '/content');
     assert.deepEqual((await r.json()).locked_sections, ['限制']);
     await page.getByRole('button', { name: '关闭对话框', exact: true }).click();
