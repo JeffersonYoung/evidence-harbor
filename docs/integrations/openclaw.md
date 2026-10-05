@@ -34,7 +34,7 @@ Node 24.16+ and Python 3.12+ are required. The implementation follows the docume
 
 ## Validation and limits
 
-Repository tests check nine registrations, unchanged MCP arguments, opt-in flags, backend error handling, schema parity and actual stdio/HTTP forwarding against a local fixture. `npm pack --dry-run` checks required JavaScript, Python, schemas, manifest and skill files are included. No third-party implementation code is vendored.
+Repository tests check 15 default registrations and a separately enabled sixteenth editor registration, unchanged MCP arguments, opt-in flags, backend error handling, schema parity and actual stdio/HTTP forwarding against a local fixture. `npm pack --dry-run` checks required JavaScript, Python, schemas, manifest and skill files are included. No third-party implementation code is vendored.
 
 No OpenClaw host is installed in the implementation environment, so host loading, actual Gateway secret/environment forwarding and user-facing tool execution remain **unverified**. Run the commands above and a read-only project lookup after installation. The adapter has bounded input/output and timeouts; a failed call does not imply a write was rolled back. Inspect backend state before retrying a timed-out ingestion or proposal.
 

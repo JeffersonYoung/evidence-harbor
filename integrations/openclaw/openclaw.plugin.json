@@ -1,7 +1,7 @@
 {
   "id": "evidenceharbor",
   "name": "EvidenceHarbor",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Research tools using the EvidenceHarbor MCP server and existing API authorization",
   "categories": [
     "other"
@@ -13,10 +13,17 @@
       "evidenceharbor_get_ingestion_status",
       "evidenceharbor_get_project_context",
       "evidenceharbor_ingest_source",
+      "evidenceharbor_intake_discovered_works",
+      "evidenceharbor_link_scholarly_reading",
+      "evidenceharbor_list_discovered_works",
       "evidenceharbor_propose_research_update",
+      "evidenceharbor_read_discovered_work",
       "evidenceharbor_read_document",
+      "evidenceharbor_read_scholarly_record",
+      "evidenceharbor_record_scholarly_observation",
       "evidenceharbor_search_library",
-      "evidenceharbor_search_web"
+      "evidenceharbor_search_web",
+      "evidenceharbor_review_discovered_work_metadata"
     ]
   },
   "toolMetadata": {
@@ -35,16 +42,37 @@
     "evidenceharbor_ingest_source": {
       "optional": true
     },
+    "evidenceharbor_intake_discovered_works": {
+      "optional": true
+    },
+    "evidenceharbor_link_scholarly_reading": {
+      "optional": true
+    },
+    "evidenceharbor_list_discovered_works": {
+      "optional": true
+    },
     "evidenceharbor_propose_research_update": {
       "optional": true
     },
+    "evidenceharbor_read_discovered_work": {
+      "optional": true
+    },
     "evidenceharbor_read_document": {
+      "optional": true
+    },
+    "evidenceharbor_read_scholarly_record": {
+      "optional": true
+    },
+    "evidenceharbor_record_scholarly_observation": {
       "optional": true
     },
     "evidenceharbor_search_library": {
       "optional": true
     },
     "evidenceharbor_search_web": {
+      "optional": true
+    },
+    "evidenceharbor_review_discovered_work_metadata": {
       "optional": true
     }
   },

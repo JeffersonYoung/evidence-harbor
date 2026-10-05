@@ -59,7 +59,7 @@ Source watches support enabled/paused HTTP, RSS/Atom and sitemap checks, classif
 
 Dispatch redelivery reuses stable workflow IDs. Explicit manual retry after terminal failure increments a persisted generation so a new workflow is possible. Project notifications use a separate transactional outbox, bounded retries and at-least-once delivery. Receivers must deduplicate event IDs. No default third-party notification recipient is configured.
 
-Agent distribution includes Codex/Claude plugin manifests and an OpenClaw bridge. The nine MCP tools acquire, search/read, register evidence and propose updates. They exclude publication, administrative schedule changes, arbitrary shell/SQL and credentials. Host installation and a researcher-role API credential remain operator-controlled steps.
+Agent distribution includes Codex/Claude plugin manifests and an OpenClaw bridge. The 15 default MCP tools acquire, search/read, register evidence and propose updates. They exclude publication, administrative schedule changes, arbitrary shell/SQL and credentials. Host installation and a researcher-role API credential remain operator-controlled steps.
 
 ## Portability, recovery and operations
 

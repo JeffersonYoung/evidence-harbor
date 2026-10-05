@@ -1,0 +1,137 @@
+[
+  {
+    "name": "review_discovered_work_metadata",
+    "description": "Opt-in editor-only reviewed display correction, with expected_revision CAS and source/evidence links.\n\n    Tool visibility does not grant editor permissions. Provider observations and IDs\n    remain intact. This cannot publish reports, alter identities or modify schedules.\n    ",
+    "inputSchema": {
+      "$defs": {
+        "DisplayMetadataPatch": {
+          "additionalProperties": false,
+          "properties": {
+            "title": {
+              "anyOf": [
+                {
+                  "maxLength": 2000,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Title"
+            },
+            "authors": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 200,
+                  "minItems": 1,
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Authors"
+            },
+            "year": {
+              "anyOf": [
+                {
+                  "maximum": 2200,
+                  "minimum": 1000,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Year"
+            },
+            "venue": {
+              "anyOf": [
+                {
+                  "maxLength": 1000,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Venue"
+            }
+          },
+          "title": "DisplayMetadataPatch",
+          "type": "object"
+        },
+        "MetadataReviewInput": {
+          "additionalProperties": false,
+          "properties": {
+            "expected_revision": {
+              "minimum": 0,
+              "title": "Expected Revision",
+              "type": "integer"
+            },
+            "changes": {
+              "$ref": "#/$defs/DisplayMetadataPatch"
+            },
+            "reason": {
+              "maxLength": 10000,
+              "minLength": 5,
+              "title": "Reason",
+              "type": "string"
+            },
+            "source_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Source Url"
+            },
+            "evidence_ids": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 100,
+              "title": "Evidence Ids",
+              "type": "array"
+            }
+          },
+          "required": [
+            "expected_revision",
+            "changes",
+            "reason"
+          ],
+          "title": "MetadataReviewInput",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "work_id": {
+          "title": "Work Id",
+          "type": "string"
+        },
+        "review": {
+          "$ref": "#/$defs/MetadataReviewInput"
+        }
+      },
+      "required": [
+        "work_id",
+        "review"
+      ],
+      "title": "review_discovered_work_metadataArguments",
+      "type": "object"
+    }
+  }
+]

@@ -6,7 +6,7 @@ EvidenceHarbor ships **source-installable adapters**, not a published npm/PyPI p
 |---|---|---|
 | Codex Desktop / CLI | Local marketplace, compatibility plugin manifest, skill and stdio MCP | Codex 0.159.2 accepted and listed generated marketplace in isolated temporary home; Desktop installation not tested |
 | Claude Code | Local marketplace, plugin manifest, skill and stdio MCP | Generated package checked; real Claude validator/install not run (client unavailable) |
-| OpenClaw | Local JavaScript tool plugin, nine opt-in tools, Python stdio MCP bridge | Registration/transport tests and package contents checked; real OpenClaw validator/install not run (host unavailable) |
+| OpenClaw | Local JavaScript tool plugin, 15 optional default tools plus an explicitly enabled editor metadata tool, Python stdio MCP bridge | Registration/transport tests and package contents checked; real OpenClaw validator/install not run (host unavailable) |
 
 No real client settings, persistent access, API tokens, public registries or publishing configuration are changed by the build helpers. Marketplace discovery was checked using a temporary isolated Codex home without credentials; no plugin was enabled there. The remaining install/enable steps below are operator actions.
 
@@ -19,10 +19,11 @@ git clone https://github.com/JeffersonYoung/evidence-harbor.git
 cd evidence-harbor
 # For a repeatable release, git checkout <reviewed-commit-sha> first.
 python3.12 -m venv .venv
-.venv/bin/python -m pip install .
+.venv/bin/python -m pip install --require-hashes -r requirements.lock
+.venv/bin/python -m pip install --no-deps .
 ```
 
-The source commit fixes EvidenceHarbor code; current Python dependency ranges are **not a transitive dependency lock**. Use the deployment's approved dependency lock or constraints for fully reproducible environments. There are no auto-updates or install-time network scripts in these adapters.
+Use the reviewed source commit together with the included hash-checked requirements.lock for the tested dependency set. Optional OCR/model assets still require separately reviewed provisioning. There are no auto-updates or install-time network scripts in these adapters.
 
 An operator supplies an existing **researcher-role**, project/workspace-scoped credential through the host's environment or secret facility. Set EVIDENCEHARBOR_API_URL to your trusted API origin and EVIDENCEHARBOR_API_TOKEN to that credential. Do not put real tokens in config examples, chat, source control or process arguments. Do not use the backend's administrator convenience API_TOKEN. Creating a token or granting new access is a separate security action.
 
@@ -30,7 +31,7 @@ Use HTTPS for a remote API; HTTP is only appropriate for a trusted local loopbac
 
 ## Capabilities and authority
 
-The core MCP server exposes get_project_context, search_library, read_document, get_evidence, create_evidence, search_web, ingest_source, get_ingestion_status and propose_research_update. OpenClaw prefixes their names with `evidenceharbor_`; arguments are identical. A checked-in schema snapshot is generated from the live server definition and tested for drift. All authorization, quoting validation and persistence remain in the backend.
+The core MCP server exposes get_project_context, search_library, read_document, get_evidence, create_evidence, search_web, ingest_source, get_ingestion_status and propose_research_update. OpenClaw prefixes their names with `evidenceharbor_`; arguments are identical. A checked-in schema snapshot is generated from the live server definition and tested for drift. All authorization, quoting validation and persistence remain in the backend. Six additional default scholarly tools provide bounded discovery/record reads, intake, audit observations and validated reading links. A sixteenth metadata-correction tool requires explicit operator opt-in and an actual editor API role; see [scholarly MCP contracts](scholarly-mcp.md).
 
 Proposals are reviewable drafts. No adapter offers report publication, schedule changes, credential management or administrative tools. Ingestion and evidence/proposal creation are writes; review the client's tool approval settings. A client allowlist is additional protection, not a replacement for backend authorization. Retrieved source text is untrusted.
 

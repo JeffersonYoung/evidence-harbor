@@ -6,14 +6,13 @@ from typing import Literal
 from urllib.parse import unquote, urlsplit
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import Field, field_validator
 from sqlalchemy import DDL, JSON, ForeignKey, String, Text, UniqueConstraint, event, func, select
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, load_only, mapped_column
 
 from . import domain as d
 from . import models as m
 from .db import Base, get_session
-from .schemas import StrictModel, declared_original_url
+from .schemas import BatchInput, MetadataReviewInput, ReadingInput, WorkInput
 
 
 class DiscoveredWork(m.Identified, m.Scoped, Base):
@@ -97,79 +96,6 @@ for model in (WorkAlias, WorkObservation, WorkReading, WorkMetadataReview):
         )
 
 
-class WorkInput(StrictModel):
-    title: str = Field(min_length=1, max_length=2000)
-    authors: list[str] = Field(default_factory=list, max_length=200)
-    doi: str | None = Field(default=None, max_length=300)
-    arxiv_id: str | None = Field(default=None, max_length=100)
-    year: int | None = Field(default=None, ge=1000, le=2200)
-    source_url: str | None = None
-    abstract: str = Field(default="", max_length=100000)
-    access_status: Literal["unknown", "open_access", "restricted", "unavailable"] = "unknown"
-    metadata: dict = Field(default_factory=dict)
-
-    @field_validator("source_url")
-    @classmethod
-    def provenance_url(cls, value):
-        return declared_original_url(value)
-
-    @field_validator("authors")
-    @classmethod
-    def bounded_authors(cls, value):
-        if any(not item.strip() or len(item) > 500 for item in value):
-            raise ValueError("Author names must be nonempty and at most 500 characters")
-        return value
-
-    @field_validator("metadata")
-    @classmethod
-    def bounded_metadata(cls, value):
-        import json
-
-        if len(json.dumps(value, allow_nan=False)) > 100000:
-            raise ValueError("Discovery metadata is too large")
-        return value
-
-
-class BatchInput(StrictModel):
-    project_id: str
-    items: list[WorkInput] = Field(min_length=1, max_length=200)
-
-
-class ReadingInput(StrictModel):
-    document_id: str
-    content_scope: Literal["abstract", "fulltext"]
-    fulltext_reviewed: bool = Field(
-        default=False,
-        description="Attest the saved artifact contains full text, not that every paragraph was read",
-    )
-    review_note: str = Field(min_length=5, max_length=10000)
-
-
-class DisplayMetadataPatch(StrictModel):
-    title: str | None = Field(default=None, min_length=1, max_length=2000)
-    authors: list[str] | None = Field(default=None, min_length=1, max_length=200)
-    year: int | None = Field(default=None, ge=1000, le=2200)
-    venue: str | None = Field(default=None, min_length=1, max_length=1000)
-
-    @field_validator("authors")
-    @classmethod
-    def valid_authors(cls, value):
-        return WorkInput.bounded_authors(value) if value is not None else None
-
-
-class MetadataReviewInput(StrictModel):
-    expected_revision: int = Field(ge=0)
-    changes: DisplayMetadataPatch
-    reason: str = Field(min_length=5, max_length=10000)
-    source_url: str | None = None
-    evidence_ids: list[str] = Field(default_factory=list, max_length=100)
-
-    @field_validator("source_url")
-    @classmethod
-    def reviewed_source(cls, value):
-        return declared_original_url(value)
-
-
 def normalized_words(value):
     return " ".join(re.findall(r"\w+", unicodedata.normalize("NFKC", value).casefold()))
 
@@ -203,9 +129,13 @@ def identity_keys(item):
     return keys
 
 
-def intake(session, workspace, project_id, item):
+def observation_payload_hash(payload):
     import json
 
+    return d.digest(json.dumps(payload, sort_keys=True, ensure_ascii=False))
+
+
+def intake(session, workspace, project_id, item):
     keys = identity_keys(item)
     aliases = list(
         session.scalars(
@@ -255,7 +185,7 @@ def intake(session, workspace, project_id, item):
         if not any(alias.key == key for alias in aliases):
             session.add(WorkAlias(workspace_id=workspace, project_id=project_id, work_id=work.id, key=key))
     payload = item.model_dump()
-    fingerprint = d.digest(json.dumps(payload, sort_keys=True, ensure_ascii=False))
+    fingerprint = observation_payload_hash(payload)
     if (
         session.scalar(
             select(WorkObservation.id).where(
@@ -329,7 +259,10 @@ def content_scope(session, representation, capture):
 
 
 def work_record(session, work, detail=False):
-    readings = list(session.scalars(select(WorkReading).where(WorkReading.work_id == work.id)))
+    reading_query = select(WorkReading).where(WorkReading.work_id == work.id)
+    if not detail:
+        reading_query = reading_query.options(load_only(WorkReading.id, WorkReading.content_scope))
+    readings = list(session.scalars(reading_query))
     full = any(row.content_scope == "fulltext" for row in readings)
     value = {
         **d.serialize(work),
@@ -342,13 +275,13 @@ def work_record(session, work, detail=False):
         else "discovery metadata is not evidence",
         "reading_ids": [row.id for row in readings],
     }
-    reviews = list(
-        session.scalars(
-            select(WorkMetadataReview)
-            .where(WorkMetadataReview.work_id == work.id)
-            .order_by(WorkMetadataReview.revision)
-        )
+    review_query = select(WorkMetadataReview).where(WorkMetadataReview.work_id == work.id)
+    review_query = (
+        review_query.order_by(WorkMetadataReview.revision)
+        if detail
+        else review_query.order_by(WorkMetadataReview.revision.desc()).limit(1)
     )
+    reviews = list(session.scalars(review_query))
     value["review_revision"] = reviews[-1].revision if reviews else 0
     value["review_status"] = "reviewed_metadata" if reviews else "unreviewed_provider_metadata"
     if reviews:
@@ -367,12 +300,119 @@ def work_record(session, work, detail=False):
     return value
 
 
+def agent_work_summary(session, work):
+    """Bounded projection only; eligibility and reviewed metadata stay in the common domain."""
+    record = work_record(session, work)
+    fields = (
+        "id",
+        "project_id",
+        "canonical_key",
+        "year",
+        "access_status",
+        "content_scope",
+        "evidence_eligible",
+        "fulltext_ready",
+        "fulltext_read",
+        "review_revision",
+        "review_status",
+    )
+    result = {key: record[key] for key in fields}
+    result["agent_projection_version"] = 1
+    result.update(
+        title=record["title"][:500],
+        title_length=len(record["title"]),
+        authors=[name[:200] for name in record["authors"][:20]],
+        author_count=len(record["authors"]),
+        authors_truncated=len(record["authors"]) > 20
+        or any(len(name) > 200 for name in record["authors"][:20]),
+        venue=str(record.get("venue", ""))[:500],
+        source_url_preview=(record.get("source_url") or "")[:1024],
+        abstract_length=len(work.abstract),
+        full_text_reading_certified=False,
+    )
+    return result
+
+
+def agent_work_detail(session, work, offset, limit, abstract_start, abstract_limit):
+    if abstract_start > len(work.abstract):
+        raise d.DomainError("Abstract range is outside the saved abstract", 422)
+    result = agent_work_summary(session, work)
+    end = min(len(work.abstract), abstract_start + abstract_limit)
+    result["abstract"] = work.abstract[abstract_start:end]
+    result["abstract_range"] = {
+        "start_offset": abstract_start,
+        "end_offset": end,
+        "total_length": len(work.abstract),
+        "next_offset": end if end < len(work.abstract) else None,
+        "offset_unit": "unicode_code_points",
+    }
+    result["pages"] = {}
+    specs = [
+        ("aliases", WorkAlias, [WorkAlias.id, WorkAlias.key]),
+        (
+            "observations",
+            WorkObservation,
+            [WorkObservation.id, WorkObservation.payload_hash, WorkObservation.created_at],
+        ),
+        (
+            "readings",
+            WorkReading,
+            [
+                WorkReading.id,
+                WorkReading.document_id,
+                WorkReading.representation_id,
+                WorkReading.capture_id,
+                WorkReading.content_scope,
+                WorkReading.created_at,
+            ],
+        ),
+        (
+            "metadata_reviews",
+            WorkMetadataReview,
+            [WorkMetadataReview.id, WorkMetadataReview.revision, WorkMetadataReview.created_at],
+        ),
+    ]
+    for name, model, columns in specs:
+        conditions = (model.work_id == work.id, model.workspace_id == work.workspace_id)
+        total = session.scalar(select(func.count()).select_from(model).where(*conditions))
+        rows = session.execute(
+            select(*columns)
+            .where(*conditions)
+            .order_by(model.created_at, model.id)
+            .offset(offset)
+            .limit(limit)
+        ).mappings()
+        result[name] = [dict(row) for row in rows]
+        result["pages"][name] = {
+            "offset": offset,
+            "limit": limit,
+            "total": total,
+            "next_offset": offset + limit if offset + limit < total else None,
+        }
+    result["record_reading_instruction"] = (
+        "Use immutable record IDs with read_scholarly_record for provenance or review details. Abstracts and screening observations do not certify full-paper reading."
+    )
+    return result
+
+
 def create_router(require_workspace, require_role, require_principal):
     router = APIRouter(prefix="/v1/discovered-works", tags=["scholarly discovery"])
 
+    @router.get("/capabilities")
+    def capabilities(workspace=Depends(require_workspace)):
+        return {
+            "protocol": "scholarly-mcp-v1",
+            "agent_projection_version": 1,
+            "metadata_intake_is_reading": False,
+            "canonical_correction_role": "editor",
+        }
+
     @router.post("/batch", status_code=201)
     def batch(
-        payload: BatchInput, workspace=Depends(require_role("researcher")), session=Depends(get_session)
+        payload: BatchInput,
+        view: Literal["full", "agent"] = "full",
+        workspace=Depends(require_role("researcher")),
+        session=Depends(get_session),
     ):
         from sqlalchemy.exc import IntegrityError
 
@@ -390,16 +430,21 @@ def create_router(require_workspace, require_role, require_principal):
                 "Concurrent scholarly identity collision; retry the complete batch", 409
             ) from exc
         return {
-            "items": [work_record(session, row) for row in rows],
+            "items": [
+                agent_work_summary(session, row) if view == "agent" else work_record(session, row)
+                for row in rows
+            ],
             "created": created,
             "deduplicated": len(rows) - created,
+            "agent_projection_version": 1 if view == "agent" else None,
         }
 
     @router.get("")
     def listing(
         project_id: str,
-        offset: int = Query(default=0, ge=0),
+        offset: int = Query(default=0, ge=0, le=1_000_000),
         limit: int = Query(default=100, ge=1, le=200),
+        view: Literal["full", "agent"] = "full",
         workspace=Depends(require_workspace),
         session=Depends(get_session),
     ):
@@ -412,20 +457,115 @@ def create_router(require_workspace, require_role, require_principal):
             query.order_by(DiscoveredWork.created_at, DiscoveredWork.id).offset(offset).limit(limit)
         )
         return {
-            "items": [work_record(session, row) for row in rows],
+            "items": [
+                agent_work_summary(session, row) if view == "agent" else work_record(session, row)
+                for row in rows
+            ],
             "total": total,
             "offset": offset,
             "next_offset": offset + limit if offset + limit < total else None,
+            "agent_projection_version": 1 if view == "agent" else None,
         }
 
     @router.get("/{work_id}")
-    def detail(work_id: str, workspace=Depends(require_workspace), session=Depends(get_session)):
-        return work_record(session, d.scoped(session, DiscoveredWork, work_id, workspace), detail=True)
+    def detail(
+        work_id: str,
+        view: Literal["full", "agent"] = "full",
+        offset: int = Query(default=0, ge=0, le=1_000_000),
+        limit: int = Query(default=10, ge=1, le=50),
+        abstract_start: int = Query(default=0, ge=0, le=100000),
+        abstract_limit: int = Query(default=2000, ge=1, le=8000),
+        workspace=Depends(require_workspace),
+        session=Depends(get_session),
+    ):
+        work = d.scoped(session, DiscoveredWork, work_id, workspace)
+        return (
+            agent_work_detail(session, work, offset, limit, abstract_start, abstract_limit)
+            if view == "agent"
+            else work_record(session, work, detail=True)
+        )
+
+    @router.get("/{work_id}/records/{record_kind}/{record_id}")
+    def record_window(
+        work_id: str,
+        record_kind: Literal["observation", "reading", "metadata_review"],
+        record_id: str,
+        start: int = Query(default=0, ge=0, le=2_000_000),
+        limit: int = Query(default=2000, ge=1, le=16000),
+        workspace=Depends(require_workspace),
+        session=Depends(get_session),
+    ):
+        import json
+
+        work = d.scoped(session, DiscoveredWork, work_id, workspace)
+        model = {
+            "observation": WorkObservation,
+            "reading": WorkReading,
+            "metadata_review": WorkMetadataReview,
+        }[record_kind]
+        record = d.scoped(session, model, record_id, workspace, work.project_id)
+        if record.work_id != work.id:
+            raise d.DomainError("Scholarly record not found", 404)
+        text = json.dumps(d.serialize(record), sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+        if start > len(text):
+            raise d.DomainError("Record range is outside the saved record", 422)
+        end = min(len(text), start + limit)
+        return {
+            "work_id": work.id,
+            "record_kind": record_kind,
+            "record_id": record.id,
+            "record_sha256": d.digest(text),
+            "text": text[start:end],
+            "text_sha256": d.digest(text[start:end]),
+            "reading_range": {
+                "start_offset": start,
+                "end_offset": end,
+                "total_length": len(text),
+                "next_offset": end if end < len(text) else None,
+                "has_more": end < len(text),
+                "offset_unit": "unicode_code_points",
+            },
+        }
+
+    @router.post("/{work_id}/observations", status_code=201)
+    def append_observation(
+        work_id: str,
+        payload: WorkInput,
+        view: Literal["full", "agent"] = "full",
+        workspace=Depends(require_role("researcher")),
+        session=Depends(get_session),
+    ):
+        from sqlalchemy.exc import IntegrityError
+
+        target = d.scoped(session, DiscoveredWork, work_id, workspace)
+        try:
+            found, created = intake(session, workspace, target.project_id, payload)
+            if created or found.id != target.id:
+                raise d.DomainError("Observation identity does not match the target discovered work", 409)
+            session.commit()
+        except IntegrityError as exc:
+            session.rollback()
+            raise d.DomainError("Concurrent scholarly identity conflict; retry the observation", 409) from exc
+        result = (
+            agent_work_summary(session, target)
+            if view == "agent"
+            else work_record(session, target, detail=True)
+        )
+        observation = session.scalar(
+            select(WorkObservation).where(
+                WorkObservation.work_id == target.id,
+                WorkObservation.payload_hash == observation_payload_hash(payload.model_dump()),
+            )
+        )
+        result["observation_id"] = observation.id
+        result["observation_payload_hash"] = observation.payload_hash
+        return result
 
     @router.post("/{work_id}/metadata-reviews", status_code=201)
     def review_metadata(
         work_id: str,
         payload: MetadataReviewInput,
+        view: Literal["full", "agent"] = "full",
         workspace=Depends(require_role("editor")),
         principal=Depends(require_principal),
         session=Depends(get_session),
@@ -472,7 +612,9 @@ def create_router(require_workspace, require_role, require_principal):
         except IntegrityError as exc:
             session.rollback()
             raise d.DomainError("A concurrent metadata correction won; reload before retrying", 409) from exc
-        return work_record(session, work, detail=True)
+        return (
+            agent_work_summary(session, work) if view == "agent" else work_record(session, work, detail=True)
+        )
 
     @router.post("/{work_id}/readings", status_code=201)
     def link(

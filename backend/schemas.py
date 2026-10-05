@@ -186,3 +186,76 @@ class SubscriptionCreate(StrictModel):
     project_id: str
     event_types: list[str] = Field(default_factory=lambda: ["*"], min_length=1)
     target_url: str | None = None
+
+
+class WorkInput(StrictModel):
+    title: str = Field(min_length=1, max_length=2000)
+    authors: list[str] = Field(default_factory=list, max_length=200)
+    doi: str | None = Field(default=None, max_length=300)
+    arxiv_id: str | None = Field(default=None, max_length=100)
+    year: int | None = Field(default=None, ge=1000, le=2200)
+    source_url: str | None = None
+    abstract: str = Field(default="", max_length=100000)
+    access_status: Literal["unknown", "open_access", "restricted", "unavailable"] = "unknown"
+    metadata: dict = Field(default_factory=dict)
+
+    @field_validator("source_url")
+    @classmethod
+    def provenance_url(cls, value):
+        return declared_original_url(value)
+
+    @field_validator("authors")
+    @classmethod
+    def bounded_authors(cls, value):
+        if any(not item.strip() or len(item) > 500 for item in value):
+            raise ValueError("Author names must be nonempty and at most 500 characters")
+        return value
+
+    @field_validator("metadata")
+    @classmethod
+    def bounded_metadata(cls, value):
+        import json
+
+        if len(json.dumps(value, allow_nan=False)) > 100000:
+            raise ValueError("Discovery metadata is too large")
+        return value
+
+
+class BatchInput(StrictModel):
+    project_id: str
+    items: list[WorkInput] = Field(min_length=1, max_length=200)
+
+
+class ReadingInput(StrictModel):
+    document_id: str
+    content_scope: Literal["abstract", "fulltext"]
+    fulltext_reviewed: bool = Field(
+        default=False,
+        description="Attest the saved artifact contains full text, not that every paragraph was read",
+    )
+    review_note: str = Field(min_length=5, max_length=10000)
+
+
+class DisplayMetadataPatch(StrictModel):
+    title: str | None = Field(default=None, min_length=1, max_length=2000)
+    authors: list[str] | None = Field(default=None, min_length=1, max_length=200)
+    year: int | None = Field(default=None, ge=1000, le=2200)
+    venue: str | None = Field(default=None, min_length=1, max_length=1000)
+
+    @field_validator("authors")
+    @classmethod
+    def valid_authors(cls, value):
+        return WorkInput.bounded_authors(value) if value is not None else None
+
+
+class MetadataReviewInput(StrictModel):
+    expected_revision: int = Field(ge=0)
+    changes: DisplayMetadataPatch
+    reason: str = Field(min_length=5, max_length=10000)
+    source_url: str | None = None
+    evidence_ids: list[str] = Field(default_factory=list, max_length=100)
+
+    @field_validator("source_url")
+    @classmethod
+    def reviewed_source(cls, value):
+        return declared_original_url(value)

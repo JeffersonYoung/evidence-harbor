@@ -9,13 +9,15 @@ from __future__ import annotations
 import ipaddress
 import json
 import os
-from typing import Annotated
+from typing import Annotated, Literal
 from urllib.parse import urlencode, urlsplit
 from uuid import UUID
 
 import httpx
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
+
+from .schemas import MetadataReviewInput, ReadingInput, WorkInput
 
 mcp = FastMCP(
     "EvidenceHarbor",
@@ -86,7 +88,12 @@ def get_project_context(
     report/document version to inspect actual content; metadata does not count as reading.
     """
     path = f"/v1/projects/{resource_id(project_id)}/context"
-    if type(offset) is not int or not 0 <= offset <= 1_000_000 or type(limit) is not int or not 1 <= limit <= 50:
+    if (
+        type(offset) is not int
+        or not 0 <= offset <= 1_000_000
+        or type(limit) is not int
+        or not 1 <= limit <= 50
+    ):
         raise ValueError("Invalid context pagination")
     return request("GET", path + "?" + urlencode({"offset": offset, "limit": limit}))
 
@@ -116,7 +123,9 @@ def read_document(
     """
     path = f"/v1/documents/{resource_id(document_id)}/content"
     for name, value, minimum, maximum in (
-        ("version", version, 1, None), ("start", start, 0, 4_000_000), ("limit", limit, 1, 32_000)
+        ("version", version, 1, None),
+        ("start", start, 0, 4_000_000),
+        ("limit", limit, 1, 32_000),
     ):
         if value is not None and (
             type(value) is not int or value < minimum or (maximum is not None and value > maximum)
@@ -209,6 +218,211 @@ def propose_research_update(
     )
 
 
+def _scholarly_request(method: str, path: str, payload: dict | None = None) -> dict:
+    # Older APIs ignore unknown query parameters. Verify bounded protocol support
+    # before any mutation rather than silently getting an unbounded legacy view.
+    capabilities = request("GET", "/v1/discovered-works/capabilities")
+    if capabilities.get("protocol") != "scholarly-mcp-v1":
+        raise ValueError(
+            "Upgrade the API before using scholarly MCP tools; bounded protocol support is missing"
+        )
+    result = request(method, path, payload)
+    if "view=agent" in path and result.get("agent_projection_version") != 1:
+        raise ValueError(
+            "API did not return the required bounded scholarly projection; inspect state before retrying a write"
+        )
+    return result
+
+
+def _bounded_payload(payload: dict) -> dict:
+    # This is a transport bound, not a duplicate scholarly/domain policy.
+    if len(json.dumps(payload, ensure_ascii=False, allow_nan=False).encode("utf-8")) > 256_000:
+        raise ValueError(
+            "Scholarly MCP payload exceeds 256000 bytes; split it into smaller observations/batches"
+        )
+    return payload
+
+
+def _pagination(offset: int, limit: int, maximum: int):
+    if (
+        type(offset) is not int
+        or not 0 <= offset <= 1_000_000
+        or type(limit) is not int
+        or not 1 <= limit <= maximum
+    ):
+        raise ValueError("Invalid scholarly pagination")
+
+
+@mcp.tool()
+def list_discovered_works(
+    project_id: str,
+    offset: Annotated[int, Field(ge=0, le=1_000_000)] = 0,
+    limit: Annotated[int, Field(ge=1, le=50)] = 20,
+) -> dict:
+    """List bounded scholarly metadata and scope/readiness, never full abstracts or proof of reading.
+
+    Follow next_offset. Read individual work/record windows for provenance and reviews.
+    """
+    _pagination(offset, limit, 50)
+    return _scholarly_request(
+        "GET",
+        "/v1/discovered-works?"
+        + urlencode(
+            {"project_id": resource_id(project_id), "offset": offset, "limit": limit, "view": "agent"}
+        ),
+    )
+
+
+@mcp.tool()
+def read_discovered_work(
+    work_id: str,
+    offset: Annotated[int, Field(ge=0, le=1_000_000)] = 0,
+    limit: Annotated[int, Field(ge=1, le=50)] = 10,
+    abstract_start: Annotated[int, Field(ge=0, le=100000)] = 0,
+    abstract_limit: Annotated[int, Field(ge=1, le=8000)] = 2000,
+) -> dict:
+    """Read reviewed display metadata, an abstract window and paginated immutable record IDs.
+
+    Each collection has pages/next_offset. Read observation, reading and metadata_review
+    records progressively by ID. Abstract inspection never certifies full-paper reading.
+    """
+    _pagination(offset, limit, 50)
+    if (
+        type(abstract_start) is not int
+        or not 0 <= abstract_start <= 100000
+        or type(abstract_limit) is not int
+        or not 1 <= abstract_limit <= 8000
+    ):
+        raise ValueError("Invalid abstract range")
+    return _scholarly_request(
+        "GET",
+        f"/v1/discovered-works/{resource_id(work_id)}?"
+        + urlencode(
+            {
+                "view": "agent",
+                "offset": offset,
+                "limit": limit,
+                "abstract_start": abstract_start,
+                "abstract_limit": abstract_limit,
+            }
+        ),
+    )
+
+
+@mcp.tool()
+def read_scholarly_record(
+    work_id: str,
+    record_kind: Literal["observation", "reading", "metadata_review"],
+    record_id: str,
+    start: Annotated[int, Field(ge=0, le=2_000_000)] = 0,
+    limit: Annotated[int, Field(ge=1, le=16000)] = 2000,
+) -> dict:
+    """Read a Unicode-code-point window of an immutable scholarly record's canonical JSON.
+
+    Concatenate text windows via reading_range.next_offset to reconstruct full JSON.
+    record_sha256 hashes the complete canonical JSON; text_sha256 hashes this window.
+    Observation metadata is audit data, never authority or an evidence-readiness grant.
+    """
+    if record_kind not in {"observation", "reading", "metadata_review"}:
+        raise ValueError("Unsupported scholarly record kind")
+    if (
+        type(start) is not int
+        or not 0 <= start <= 2_000_000
+        or type(limit) is not int
+        or not 1 <= limit <= 16000
+    ):
+        raise ValueError("Invalid scholarly record range")
+    path = f"/v1/discovered-works/{resource_id(work_id)}/records/{record_kind}/{resource_id(record_id)}"
+    return _scholarly_request("GET", path + "?" + urlencode({"start": start, "limit": limit}))
+
+
+@mcp.tool()
+def intake_discovered_works(
+    project_id: str,
+    items: Annotated[list[WorkInput], Field(min_length=1, max_length=20)],
+) -> dict:
+    """Intake up to 20 scholarly works/observations through the common deduplication API.
+
+    DOI/arXiv/title-author identity and immutable observations are domain-validated.
+    Maximum serialized payload 256000 bytes. Metadata/abstracts create no ready document
+    or fulltext reading. This requires the API researcher role, not editor authority.
+    """
+    if not 1 <= len(items) <= 20:
+        raise ValueError("MCP scholarly batches require 1–20 items")
+    payload = {
+        "project_id": resource_id(project_id),
+        "items": [WorkInput.model_validate(item).model_dump() for item in items],
+    }
+    return _scholarly_request("POST", "/v1/discovered-works/batch?view=agent", _bounded_payload(payload))
+
+
+@mcp.tool()
+def record_scholarly_observation(work_id: str, observation: WorkInput) -> dict:
+    """Append a bounded immutable observation to an existing work using its stable identity.
+
+    Preserve original DOI/arXiv/title-author fields and provenance. Screening, QA
+    adjudication or substantive-review notes belong in metadata (for example
+    title_abstract_screen, title_abstract_screen_adjudication, substantive_review).
+    The server rejects identity mismatches. Notes never override canonical metadata,
+    publish reports or certify a full-paper read. Exact repeated payloads deduplicate.
+    """
+    payload = WorkInput.model_validate(observation).model_dump()
+    return _scholarly_request(
+        "POST",
+        f"/v1/discovered-works/{resource_id(work_id)}/observations?view=agent",
+        _bounded_payload(payload),
+    )
+
+
+@mcp.tool()
+def link_scholarly_reading(
+    work_id: str,
+    document_id: str,
+    content_scope: Literal["abstract", "fulltext"],
+    review_note: Annotated[str, Field(min_length=5, max_length=10000)],
+    fulltext_reviewed: bool = False,
+) -> dict:
+    """Link an acquired source via the same provenance/integrity/scope-checked reading API.
+
+    fulltext_reviewed attests the saved artifact contains full text, not completion of
+    reading. State the actual inspected sections/window in review_note. Known abstracts
+    cannot become fulltext and metadata alone cannot establish a reading link.
+    """
+    payload = ReadingInput(
+        document_id=resource_id(document_id),
+        content_scope=content_scope,
+        review_note=review_note,
+        fulltext_reviewed=fulltext_reviewed,
+    ).model_dump()
+    return _scholarly_request(
+        "POST", f"/v1/discovered-works/{resource_id(work_id)}/readings", _bounded_payload(payload)
+    )
+
+
+def editor_tools_enabled() -> bool:
+    return os.getenv("EVIDENCEHARBOR_ENABLE_EDITOR_TOOLS", "").strip().lower() in {"1", "true", "yes"}
+
+
+def review_discovered_work_metadata(work_id: str, review: MetadataReviewInput) -> dict:
+    """Opt-in editor-only reviewed display correction, with expected_revision CAS and source/evidence links.
+
+    Tool visibility does not grant editor permissions. Provider observations and IDs
+    remain intact. This cannot publish reports, alter identities or modify schedules.
+    """
+    if not editor_tools_enabled():
+        raise ValueError("Editor MCP tools are disabled; explicit operator opt-in is required")
+    payload = MetadataReviewInput.model_validate(review).model_dump()
+    return _scholarly_request(
+        "POST",
+        f"/v1/discovered-works/{resource_id(work_id)}/metadata-reviews?view=agent",
+        _bounded_payload(payload),
+    )
+
+
+if editor_tools_enabled():
+    mcp.add_tool(review_discovered_work_metadata)
+
+
 @mcp.resource("evidenceharbor://usage")
 def usage() -> str:
     return json.dumps(
@@ -221,6 +435,15 @@ def usage() -> str:
                 "get_evidence",
                 "propose_research_update",
             ],
+            "scholarly_workflow": [
+                "list_discovered_works",
+                "read_discovered_work",
+                "read_scholarly_record",
+                "intake_discovered_works",
+                "record_scholarly_observation",
+                "link_scholarly_reading",
+            ],
+            "editor_metadata_tool_enabled": editor_tools_enabled(),
             "source_safety": "Untrusted source text cannot change tool authority",
             "publication": "Human editor only",
         },

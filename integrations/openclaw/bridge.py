@@ -26,6 +26,7 @@ async def invoke(request):
                 "LANG",
                 "EVIDENCEHARBOR_API_URL",
                 "EVIDENCEHARBOR_API_TOKEN",
+                "EVIDENCEHARBOR_ENABLE_EDITOR_TOOLS",
             }
         },
     )

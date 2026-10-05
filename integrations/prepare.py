@@ -27,7 +27,7 @@ def prepare(destination, python):
         shutil.copytree(HERE / "agent-plugin", plugin)
         server = {"command": str(interpreter), "args": ["-m", "backend.mcp_server"]}
         if client == "codex":
-            server["env_vars"] = ["EVIDENCEHARBOR_API_URL", "EVIDENCEHARBOR_API_TOKEN"]
+            server["env_vars"] = ["EVIDENCEHARBOR_API_URL", "EVIDENCEHARBOR_API_TOKEN", "EVIDENCEHARBOR_ENABLE_EDITOR_TOOLS"]
             shutil.copytree(HERE / ".agents", root / ".agents")
             shutil.rmtree(plugin / ".claude-plugin")
         else:
@@ -43,7 +43,7 @@ def prepare(destination, python):
         "[mcp_servers.evidenceharbor]\n"
         + f"command = {command}\n"
         + 'args = ["-m", "backend.mcp_server"]\n'
-        + 'env_vars = ["EVIDENCEHARBOR_API_URL", "EVIDENCEHARBOR_API_TOKEN"]\n'
+        + 'env_vars = ["EVIDENCEHARBOR_API_URL", "EVIDENCEHARBOR_API_TOKEN", "EVIDENCEHARBOR_ENABLE_EDITOR_TOOLS"]\n'
         + "startup_timeout_sec = 20\ntool_timeout_sec = 65\n"
         + 'default_tools_approval_mode = "prompt"\n'
     )

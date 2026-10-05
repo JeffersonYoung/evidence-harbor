@@ -12,7 +12,7 @@ export async function callMcp(name, args, { python, timeoutMs = 65000, signal } 
       shell: false, stdio: ['pipe', 'pipe', 'ignore'], signal,
       env: Object.fromEntries(Object.entries(process.env).filter(([key]) => [
         'PATH', 'HOME', 'SYSTEMROOT', 'TEMP', 'TMP', 'LANG',
-        'EVIDENCEHARBOR_API_URL', 'EVIDENCEHARBOR_API_TOKEN'
+        'EVIDENCEHARBOR_API_URL', 'EVIDENCEHARBOR_API_TOKEN', 'EVIDENCEHARBOR_ENABLE_EDITOR_TOOLS'
       ].includes(key)))
     });
     let output = ''; let exceeded = false; let timedOut = false;

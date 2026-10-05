@@ -52,3 +52,7 @@ Retry of an archived ingestion reads its stored bytes instead of fetching the or
 ## Deployment
 
 Stop writers/workers, back up the deployment, run `alembic upgrade head` (scholarly schema revisions0008–0009), then restart API, workers and dispatcher against the same database/object store. No credentials, provider calls or schedules are created by the migration. A project export preserves scholarly works, aliases, observations and pinned reading links; private provenance and abstracts belong in private exports, not public source distributions.
+
+## Agent interface
+
+The [scholarly MCP interface](integrations/scholarly-mcp.md) wraps these same domain routes with bounded metadata/record windows, intake and append-only screening observations, and validated saved-reading links. Default researcher tools cannot overwrite reviewed canonical metadata. An explicit editor-mode tool uses the existing editor authorization and expected-revision contract. There is no separate agent datastore or alternate readiness policy.

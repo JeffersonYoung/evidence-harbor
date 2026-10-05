@@ -4,13 +4,20 @@ This record distinguishes executable product tests from unperformed deployment a
 
 ## Final local verification (2026-10-05)
 
-- Default Python collection: **426 tests: 412 passed, 14 skipped** (39.47 seconds). Skips: 7 PostgreSQL/pgvector, 5 Temporal, 2 live S3 tests; these are opt-in, not failures or passes
-- Separate real PostgreSQL17.11/pgvector0.8.0 + Temporal CLI1.9.1/Server1.32.0 runner: **29 passed** (54.72 seconds). This includes 12 opt-in database/Temporal tests and 17 tests also exercised by the default suite; do not add both counts as unique tests
+- Default Python collection: **438 tests: 424 passed, 14 skipped** (57.33 seconds). Skips: 7 PostgreSQL/pgvector, 5 Temporal, 2 live S3 tests; these are opt-in, not failures or passes
+- Separate real PostgreSQL17.11/pgvector0.8.0 + Temporal CLI1.9.1/Server1.32.0 runner: **29 passed** (56.29 seconds). This includes 12 opt-in database/Temporal tests and 17 tests also exercised by the default suite; do not add both counts as unique tests
 - Frontend component/security: **21 passed**; production Next-to-FastAPI HTTP scenarios: **23 passed**
-- Python agent-distribution tests: **3 passed**; OpenClaw Node tests: **3 passed**
+- Python agent-distribution tests: **3 passed**; OpenClaw Node tests: **4 passed**
 - Ruff, compileall, TypeScript, Next production build and Prettier checks: **passed**
 
-Final additions include durable scholarly discovery and reviewed metadata corrections, explicit abstract/fulltext scope, archive-before-parse failed-capture recovery, safe DOCX parsing, and replay-gated Temporal attempt/terminal lifecycle with real worker-loss recovery. Prior portable export and progressive-reading coverage is retained. The proxy partial-publication test was corrected to unlock/rebase the existing report with its current version, preserving the single-report/CAS contract. This is local verification, not remote GitHub CI or deployment acceptance. The backend release was published and passed hosted CI; the latest UI/context follow-on requires its own hosted run after publication.
+Final additions include durable scholarly discovery and reviewed metadata corrections, explicit abstract/fulltext scope, archive-before-parse failed-capture recovery, safe DOCX parsing, and replay-gated Temporal attempt/terminal lifecycle with real worker-loss recovery. Prior portable export and progressive-reading coverage is retained. The proxy partial-publication test was corrected to unlock/rebase the existing report with its current version, preserving the single-report/CAS contract. This is local verification, not remote GitHub CI or deployment acceptance. The backend and UI/context releases were published and passed hosted CI; this scholarly MCP follow-on requires its own hosted run after publication.
+
+## Scholarly MCP acceptance
+
+- Eight official stdio MCP → authenticated HTTP → actual FastAPI/SQLite tests use temporary test-owned credentials and verify default15/opt-in16 tool discovery, role/workspace denials, deduplication, progressive record hashes, provenance/scope gates and editor CAS
+- Four transport-contract tests verify payload bounds, disabled editor mode and fail-closed API capability negotiation
+- Shared scholarly request schemas, generated default/editor client schemas and OpenClaw package contents were verified; no persistent user credentials or real model keys were created
+- This proves disposable authenticated transport/domain parity. The production study originally used REST; no authenticated MCP run against its private corpus is claimed here
 
 ## Executed
 
@@ -23,7 +30,7 @@ Final additions include durable scholarly discovery and reviewed metadata correc
 
 The counts above cover the final code revision; additional documentation and packaging changes do not assert a deployed service.
 
-The backend extension commit `e29b89dffb536bc89d14c361da02df10a52fa07a` passed all four [hosted CI jobs](https://github.com/JeffersonYoung/evidence-harbor/actions/runs/37262828801), including 407 Python tests, 29 durable-suite tests, 18 Chromium UI scenarios and 2 live S3 tests. Those results validate the scholarly/DOCX/archive/lifecycle backend release. The newer unified scholarly UI and bounded project-context changes require a separate hosted run after publication. Explicit service variables and named no-skip gates prevent unavailable integrations from silently producing green acceptance results.
+The backend extension commit `e29b89dffb536bc89d14c361da02df10a52fa07a` passed all four [hosted CI jobs](https://github.com/JeffersonYoung/evidence-harbor/actions/runs/37262828801), including 407 Python tests, 29 durable-suite tests, 18 Chromium UI scenarios and 2 live S3 tests. Those results validate the scholarly/DOCX/archive/lifecycle backend release. The unified scholarly UI/context release `868b388280318da1d951b28262b42ba5845fc1ef` also passed all four hosted jobs, including18 original and11 scholarly Chromium scenarios. The subsequent public report commit `6e97f447d8f1c983be5af998e417e71987fd8263` retained green CI. The current expanded scholarly MCP interface requires a new hosted run after publication. Explicit service variables and named no-skip gates prevent unavailable integrations from silently producing green acceptance results.
 
 ## Not executed / verified blockers
 

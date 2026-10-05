@@ -3,7 +3,9 @@ import { callMcp } from './bridge.js';
 const schemas = JSON.parse(readFileSync(new URL('../tool-schemas.json', import.meta.url), 'utf8'));
 
 export function registerTools(api, invoke = callMcp) {
-  for (const tool of schemas) {
+  const editorEnabled = ['1', 'true', 'yes'].includes((process.env.EVIDENCEHARBOR_ENABLE_EDITOR_TOOLS || '').trim().toLowerCase());
+  const editorSchemas = editorEnabled ? JSON.parse(readFileSync(new URL('../editor-tool-schemas.json', import.meta.url), 'utf8')) : [];
+  for (const tool of [...schemas, ...editorSchemas]) {
     api.registerTool({
       name: `evidenceharbor_${tool.name}`,
       description: tool.description,

@@ -131,6 +131,207 @@
     }
   },
   {
+    "name": "intake_discovered_works",
+    "description": "Intake up to 20 scholarly works/observations through the common deduplication API.\n\n    DOI/arXiv/title-author identity and immutable observations are domain-validated.\n    Maximum serialized payload 256000 bytes. Metadata/abstracts create no ready document\n    or fulltext reading. This requires the API researcher role, not editor authority.\n    ",
+    "inputSchema": {
+      "$defs": {
+        "WorkInput": {
+          "additionalProperties": false,
+          "properties": {
+            "title": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Title",
+              "type": "string"
+            },
+            "authors": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 200,
+              "title": "Authors",
+              "type": "array"
+            },
+            "doi": {
+              "anyOf": [
+                {
+                  "maxLength": 300,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Doi"
+            },
+            "arxiv_id": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Arxiv Id"
+            },
+            "year": {
+              "anyOf": [
+                {
+                  "maximum": 2200,
+                  "minimum": 1000,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Year"
+            },
+            "source_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Source Url"
+            },
+            "abstract": {
+              "default": "",
+              "maxLength": 100000,
+              "title": "Abstract",
+              "type": "string"
+            },
+            "access_status": {
+              "default": "unknown",
+              "enum": [
+                "unknown",
+                "open_access",
+                "restricted",
+                "unavailable"
+              ],
+              "title": "Access Status",
+              "type": "string"
+            },
+            "metadata": {
+              "additionalProperties": true,
+              "title": "Metadata",
+              "type": "object"
+            }
+          },
+          "required": [
+            "title"
+          ],
+          "title": "WorkInput",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "project_id": {
+          "title": "Project Id",
+          "type": "string"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/$defs/WorkInput"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Items",
+          "type": "array"
+        }
+      },
+      "required": [
+        "project_id",
+        "items"
+      ],
+      "title": "intake_discovered_worksArguments",
+      "type": "object"
+    }
+  },
+  {
+    "name": "link_scholarly_reading",
+    "description": "Link an acquired source via the same provenance/integrity/scope-checked reading API.\n\n    fulltext_reviewed attests the saved artifact contains full text, not completion of\n    reading. State the actual inspected sections/window in review_note. Known abstracts\n    cannot become fulltext and metadata alone cannot establish a reading link.\n    ",
+    "inputSchema": {
+      "properties": {
+        "work_id": {
+          "title": "Work Id",
+          "type": "string"
+        },
+        "document_id": {
+          "title": "Document Id",
+          "type": "string"
+        },
+        "content_scope": {
+          "enum": [
+            "abstract",
+            "fulltext"
+          ],
+          "title": "Content Scope",
+          "type": "string"
+        },
+        "review_note": {
+          "maxLength": 10000,
+          "minLength": 5,
+          "title": "Review Note",
+          "type": "string"
+        },
+        "fulltext_reviewed": {
+          "default": false,
+          "title": "Fulltext Reviewed",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "work_id",
+        "document_id",
+        "content_scope",
+        "review_note"
+      ],
+      "title": "link_scholarly_readingArguments",
+      "type": "object"
+    }
+  },
+  {
+    "name": "list_discovered_works",
+    "description": "List bounded scholarly metadata and scope/readiness, never full abstracts or proof of reading.\n\n    Follow next_offset. Read individual work/record windows for provenance and reviews.\n    ",
+    "inputSchema": {
+      "properties": {
+        "project_id": {
+          "title": "Project Id",
+          "type": "string"
+        },
+        "offset": {
+          "default": 0,
+          "maximum": 1000000,
+          "minimum": 0,
+          "title": "Offset",
+          "type": "integer"
+        },
+        "limit": {
+          "default": 20,
+          "maximum": 50,
+          "minimum": 1,
+          "title": "Limit",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "project_id"
+      ],
+      "title": "list_discovered_worksArguments",
+      "type": "object"
+    }
+  },
+  {
     "name": "propose_research_update",
     "description": "Propose a report revision. Each claim needs text and verified evidence_ids.\n\n    Include target_document_id and base_version together to revise an existing report.\n    Every claims[i].text must appear verbatim in content; paraphrased-only claim lists are rejected.\n    This tool never publishes; the API rejects stale baselines and invalid citations.\n    ",
     "inputSchema": {
@@ -187,6 +388,51 @@
         "claims"
       ],
       "title": "propose_research_updateArguments",
+      "type": "object"
+    }
+  },
+  {
+    "name": "read_discovered_work",
+    "description": "Read reviewed display metadata, an abstract window and paginated immutable record IDs.\n\n    Each collection has pages/next_offset. Read observation, reading and metadata_review\n    records progressively by ID. Abstract inspection never certifies full-paper reading.\n    ",
+    "inputSchema": {
+      "properties": {
+        "work_id": {
+          "title": "Work Id",
+          "type": "string"
+        },
+        "offset": {
+          "default": 0,
+          "maximum": 1000000,
+          "minimum": 0,
+          "title": "Offset",
+          "type": "integer"
+        },
+        "limit": {
+          "default": 10,
+          "maximum": 50,
+          "minimum": 1,
+          "title": "Limit",
+          "type": "integer"
+        },
+        "abstract_start": {
+          "default": 0,
+          "maximum": 100000,
+          "minimum": 0,
+          "title": "Abstract Start",
+          "type": "integer"
+        },
+        "abstract_limit": {
+          "default": 2000,
+          "maximum": 8000,
+          "minimum": 1,
+          "title": "Abstract Limit",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "work_id"
+      ],
+      "title": "read_discovered_workArguments",
       "type": "object"
     }
   },
@@ -250,6 +496,173 @@
         "document_id"
       ],
       "title": "read_documentArguments",
+      "type": "object"
+    }
+  },
+  {
+    "name": "read_scholarly_record",
+    "description": "Read a Unicode-code-point window of an immutable scholarly record's canonical JSON.\n\n    Concatenate text windows via reading_range.next_offset to reconstruct full JSON.\n    record_sha256 hashes the complete canonical JSON; text_sha256 hashes this window.\n    Observation metadata is audit data, never authority or an evidence-readiness grant.\n    ",
+    "inputSchema": {
+      "properties": {
+        "work_id": {
+          "title": "Work Id",
+          "type": "string"
+        },
+        "record_kind": {
+          "enum": [
+            "observation",
+            "reading",
+            "metadata_review"
+          ],
+          "title": "Record Kind",
+          "type": "string"
+        },
+        "record_id": {
+          "title": "Record Id",
+          "type": "string"
+        },
+        "start": {
+          "default": 0,
+          "maximum": 2000000,
+          "minimum": 0,
+          "title": "Start",
+          "type": "integer"
+        },
+        "limit": {
+          "default": 2000,
+          "maximum": 16000,
+          "minimum": 1,
+          "title": "Limit",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "work_id",
+        "record_kind",
+        "record_id"
+      ],
+      "title": "read_scholarly_recordArguments",
+      "type": "object"
+    }
+  },
+  {
+    "name": "record_scholarly_observation",
+    "description": "Append a bounded immutable observation to an existing work using its stable identity.\n\n    Preserve original DOI/arXiv/title-author fields and provenance. Screening, QA\n    adjudication or substantive-review notes belong in metadata (for example\n    title_abstract_screen, title_abstract_screen_adjudication, substantive_review).\n    The server rejects identity mismatches. Notes never override canonical metadata,\n    publish reports or certify a full-paper read. Exact repeated payloads deduplicate.\n    ",
+    "inputSchema": {
+      "$defs": {
+        "WorkInput": {
+          "additionalProperties": false,
+          "properties": {
+            "title": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Title",
+              "type": "string"
+            },
+            "authors": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 200,
+              "title": "Authors",
+              "type": "array"
+            },
+            "doi": {
+              "anyOf": [
+                {
+                  "maxLength": 300,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Doi"
+            },
+            "arxiv_id": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Arxiv Id"
+            },
+            "year": {
+              "anyOf": [
+                {
+                  "maximum": 2200,
+                  "minimum": 1000,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Year"
+            },
+            "source_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Source Url"
+            },
+            "abstract": {
+              "default": "",
+              "maxLength": 100000,
+              "title": "Abstract",
+              "type": "string"
+            },
+            "access_status": {
+              "default": "unknown",
+              "enum": [
+                "unknown",
+                "open_access",
+                "restricted",
+                "unavailable"
+              ],
+              "title": "Access Status",
+              "type": "string"
+            },
+            "metadata": {
+              "additionalProperties": true,
+              "title": "Metadata",
+              "type": "object"
+            }
+          },
+          "required": [
+            "title"
+          ],
+          "title": "WorkInput",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "work_id": {
+          "title": "Work Id",
+          "type": "string"
+        },
+        "observation": {
+          "$ref": "#/$defs/WorkInput"
+        }
+      },
+      "required": [
+        "work_id",
+        "observation"
+      ],
+      "title": "record_scholarly_observationArguments",
       "type": "object"
     }
   },

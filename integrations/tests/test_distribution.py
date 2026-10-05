@@ -49,7 +49,18 @@ class DistributionTests(unittest.TestCase):
         )
         self.assertEqual(schemas, actual, "Run python -m integrations.export_tool_schemas")
         manifest = json.loads((ROOT / "openclaw/openclaw.plugin.json").read_text())
-        names = [f"evidenceharbor_{tool['name']}" for tool in schemas]
+        from mcp.server.fastmcp import FastMCP
+
+        from backend.mcp_server import review_discovered_work_metadata
+
+        editor = FastMCP("editor-schema-test")
+        editor.add_tool(review_discovered_work_metadata)
+        editor_actual = asyncio.run(editor.list_tools())
+        editor_schemas = json.loads((ROOT / "openclaw/editor-tool-schemas.json").read_text())
+        self.assertEqual(editor_schemas, [{"name": t.name, "description": t.description, "inputSchema": t.inputSchema} for t in editor_actual])
+        self.assertEqual(len(schemas), 15)
+        self.assertEqual([t['name'] for t in editor_schemas], ['review_discovered_work_metadata'])
+        names = [f"evidenceharbor_{tool['name']}" for tool in schemas + editor_schemas]
         self.assertEqual(names, manifest["contracts"]["tools"])
         self.assertTrue(all(manifest["toolMetadata"][name]["optional"] for name in names))
         self.assertFalse(any("publish" in name or "schedule" in name for name in names))
