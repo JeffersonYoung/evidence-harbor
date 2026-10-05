@@ -1,0 +1,7 @@
+FROM python:3.12-slim
+WORKDIR /app
+COPY backend /app/backend
+COPY deploy/renderer/egress_proxy.py /app/egress_proxy.py
+RUN useradd --uid 10001 --create-home proxy
+USER proxy
+CMD ["python", "/app/egress_proxy.py"]

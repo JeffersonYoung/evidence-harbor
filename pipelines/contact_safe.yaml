@@ -1,0 +1,18 @@
+# Contact redaction transforms the canonical representation. Raw bytes stay intact.
+version: 1
+stages:
+  - name: raw_verify
+  - name: extract
+    options:
+      html_parser: auto
+      pdf_parser: auto
+      exclude_selector: "nav, footer, .advertisement, .cookie-banner"
+      parser_timeout_seconds: 30
+      parser_memory_mb: 1024
+  - name: normalize_privacy
+    options:
+      redact_emails: true
+      redact_phones: true
+  - name: source_map
+  - name: quality
+  - name: lexical_index

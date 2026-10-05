@@ -1,0 +1,59 @@
+{
+  "id": "evidenceharbor",
+  "name": "EvidenceHarbor",
+  "version": "0.1.0",
+  "description": "Research tools using the EvidenceHarbor MCP server and existing API authorization",
+  "categories": [
+    "other"
+  ],
+  "contracts": {
+    "tools": [
+      "evidenceharbor_create_evidence",
+      "evidenceharbor_get_evidence",
+      "evidenceharbor_get_ingestion_status",
+      "evidenceharbor_get_project_context",
+      "evidenceharbor_ingest_source",
+      "evidenceharbor_propose_research_update",
+      "evidenceharbor_read_document",
+      "evidenceharbor_search_library",
+      "evidenceharbor_search_web"
+    ]
+  },
+  "toolMetadata": {
+    "evidenceharbor_create_evidence": {
+      "optional": true
+    },
+    "evidenceharbor_get_evidence": {
+      "optional": true
+    },
+    "evidenceharbor_get_ingestion_status": {
+      "optional": true
+    },
+    "evidenceharbor_get_project_context": {
+      "optional": true
+    },
+    "evidenceharbor_ingest_source": {
+      "optional": true
+    },
+    "evidenceharbor_propose_research_update": {
+      "optional": true
+    },
+    "evidenceharbor_read_document": {
+      "optional": true
+    },
+    "evidenceharbor_search_library": {
+      "optional": true
+    },
+    "evidenceharbor_search_web": {
+      "optional": true
+    }
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  },
+  "skills": [
+    "./skills"
+  ]
+}

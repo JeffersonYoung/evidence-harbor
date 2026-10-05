@@ -1,0 +1,131 @@
+name: checks
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+defaults:
+  run:
+    shell: bash
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install --require-hashes -r requirements.lock && pip install --no-deps -e .
+      - run: pytest -q
+      - run: ruff check backend scripts tests deploy/renderer integrations
+      - run: python -m compileall -q backend scripts deploy/renderer
+      - run: python -m unittest discover -s integrations/tests -v
+  durable-integrations:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: research
+          POSTGRES_PASSWORD: ephemeral-ci-only
+          POSTGRES_DB: research
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd 'pg_isready -U research -d research'
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      EVIDENCEHARBOR_TEST_POSTGRES: postgresql+psycopg://research:ephemeral-ci-only@127.0.0.1:5432/research
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install --require-hashes -r requirements.lock && pip install --no-deps -e .
+      - run: python -c "import os; from sqlalchemy import create_engine,text; e=create_engine(os.environ['EVIDENCEHARBOR_TEST_POSTGRES']); c=e.connect(); c.execute(text('CREATE EXTENSION IF NOT EXISTS vector')); c.commit()"
+      - name: Run real PostgreSQL, pgvector and Temporal tests
+        timeout-minutes: 10
+        env:
+          PYTEST_ADDOPTS: --junitxml=test-results/durable-integrations.xml
+        run: |
+          mkdir -p test-results
+          python scripts/run_temporal_tests.py 2>&1 | tee test-results/durable-integrations.log
+          python scripts/assert_integration_report.py durable test-results/durable-integrations.xml
+      - name: Upload durable-service verification
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: durable-integration-results
+          path: test-results/
+          if-no-files-found: warn
+          retention-days: 7
+  s3-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.8'
+          cache: false
+      - run: pip install --require-hashes -r requirements.lock && pip install --no-deps -e .
+      # Official pinned source release; no cloud S3 account or deployment secrets.
+      # https://github.com/minio/minio/releases/tag/RELEASE.2025-10-15T17-29-55Z
+      - name: Build official MinIO test server
+        timeout-minutes: 20
+        env:
+          GOBIN: ${{ runner.temp }}/minio-bin
+        run: go install github.com/minio/minio@RELEASE.2025-10-15T17-29-55Z
+      - name: Run real disposable S3 integration
+        timeout-minutes: 5
+        env:
+          PYTEST_ADDOPTS: --junitxml=test-results/s3-integration.xml
+        run: |
+          mkdir -p test-results
+          python scripts/run_s3_integration.py --minio-binary "$RUNNER_TEMP/minio-bin/minio" 2>&1 | tee test-results/s3-integration.log
+          python scripts/assert_integration_report.py s3 test-results/s3-integration.xml
+      - name: Upload S3 verification
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: s3-integration-results
+          path: test-results/
+          if-no-files-found: warn
+          retention-days: 7
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      # The test harness changes HOME; keep bundled Chromium at a fixed path.
+      PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/playwright-browsers
+      RUN_BROWSER_TESTS: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m venv .venv && .venv/bin/pip install --require-hashes -r requirements.lock && .venv/bin/pip install --no-deps -e .
+      - run: npm ci && npm run typecheck && npm run build && npm run format:check
+        working-directory: apps/web
+      - name: Install real Chromium and runtime dependencies
+        run: npx playwright install --with-deps chromium
+        working-directory: apps/web
+      - name: Run component, production proxy and Chromium UI tests
+        timeout-minutes: 10
+        run: bash apps/web/scripts/integration.sh
+      - run: node --test integrations/tests/openclaw.test.mjs
+      - name: Upload browser screenshots, traces and test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chromium-ui-results
+          path: apps/web/test-results/
+          if-no-files-found: warn
+          retention-days: 7

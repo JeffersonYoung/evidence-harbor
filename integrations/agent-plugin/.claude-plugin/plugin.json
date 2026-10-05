@@ -1,0 +1,8 @@
+{
+  "name": "evidenceharbor",
+  "version": "0.1.0",
+  "description": "Ground research in versioned EvidenceHarbor sources and propose reviewable updates.",
+  "author": {"name": "EvidenceHarbor contributors"},
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json"
+}

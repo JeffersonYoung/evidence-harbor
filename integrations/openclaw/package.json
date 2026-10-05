@@ -1,0 +1,25 @@
+{
+  "name": "evidenceharbor-openclaw",
+  "version": "0.1.0",
+  "description": "OpenClaw adapter for the EvidenceHarbor stdio MCP server",
+  "type": "module",
+  "private": true,
+  "files": [
+    "dist",
+    "bridge.py",
+    "tool-schemas.json",
+    "openclaw.plugin.json",
+    "skills"
+  ],
+  "engines": {
+    "node": ">=24.16.0"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.3.24-beta.2"
+  },
+  "openclaw": {
+    "extensions": [
+      "./dist/index.js"
+    ]
+  }
+}

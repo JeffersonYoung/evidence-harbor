@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "research-workspace"
+version = "0.1.0"
+description = "Versioned research assets, traceable evidence and recoverable research cycles"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115,<1", "uvicorn[standard]>=0.32,<1", "pydantic>=2.10,<3",
+  "SQLAlchemy>=2.0.36,<3", "alembic>=1.14,<2", "psycopg[binary]>=3.2,<4",
+  "python-multipart>=0.0.20,<1", "httpx>=0.28,<1", "PyYAML>=6.0.2,<7",
+  "trafilatura>=2.0,<3", "pypdf>=5,<7", "temporalio>=1.9,<2",
+  "jieba>=0.42.1,<1", "boto3>=1.35,<2", "pgvector>=0.3,<1", "mcp>=1.9,<2", "beautifulsoup4>=4.12,<5"
+]
+
+[project.optional-dependencies]
+pdf = ["docling>=2.30,<3"]
+browser = ["playwright>=1.50,<2"]
+dev = ["pytest>=8.3,<10", "pytest-asyncio>=0.25,<2", "ruff>=0.9,<1"]
+
+[tool.setuptools.packages.find]
+include = ["backend*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+
+[tool.ruff.lint.per-file-ignores]
+# FastAPI evaluates dependency declarations intentionally at function definition.
+"backend/api.py" = ["B008"]
+"backend/auth.py" = ["B008"]
+"backend/extensions.py" = ["B008"]
+"backend/scheduling.py" = ["B008"]
+# Service bootstrap runs blocking subprocess setup before its async test workload.
+"scripts/run_integration.py" = ["ASYNC220", "ASYNC221"]

@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "evidenceharbor": {
+      "command": "python",
+      "args": ["-m", "backend.mcp_server"],
+      "env": {
+        "EVIDENCEHARBOR_API_URL": "${EVIDENCEHARBOR_API_URL}",
+        "EVIDENCEHARBOR_API_TOKEN": "${EVIDENCEHARBOR_API_TOKEN}"
+      }
+    }
+  }
+}

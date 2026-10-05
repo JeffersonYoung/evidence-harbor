@@ -1,0 +1,29 @@
+version: 1
+stages:
+  - name: raw_verify
+    options:
+      max_bytes: 26214400
+  - name: extract
+    options:
+      html_parser: trafilatura
+      pdf_parser: docling
+      pdf_fallback: error
+      docling_tables: true
+      docling_ocr: false
+      parser_timeout_seconds: 120
+      parser_memory_mb: 4096
+  - name: normalize_privacy
+    options:
+      redact_emails: false
+      redact_phones: false
+  - name: source_map
+    options:
+      max_block_chars: 2000
+  - name: quality
+    options:
+      min_characters: 120
+      min_word_tokens: 20
+      max_replacement_ratio: 0.01
+  - name: lexical_index
+    options:
+      minimum_token_length: 1

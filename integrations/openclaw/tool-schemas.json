@@ -1,0 +1,291 @@
+[
+  {
+    "name": "create_evidence",
+    "description": "Register an exact substring from a previously read block; server verifies it.",
+    "inputSchema": {
+      "properties": {
+        "project_id": {
+          "title": "Project Id",
+          "type": "string"
+        },
+        "block_id": {
+          "title": "Block Id",
+          "type": "string"
+        },
+        "quote": {
+          "title": "Quote",
+          "type": "string"
+        },
+        "start_offset": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Start Offset"
+        }
+      },
+      "required": [
+        "project_id",
+        "block_id",
+        "quote"
+      ],
+      "title": "create_evidenceArguments",
+      "type": "object"
+    }
+  },
+  {
+    "name": "get_evidence",
+    "description": "Verify and read the exact stored quote and immutable capture/block locator.",
+    "inputSchema": {
+      "properties": {
+        "evidence_id": {
+          "title": "Evidence Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "evidence_id"
+      ],
+      "title": "get_evidenceArguments",
+      "type": "object"
+    }
+  },
+  {
+    "name": "get_ingestion_status",
+    "description": "Wait for succeeded; failed or pending sources must not be cited as read evidence.",
+    "inputSchema": {
+      "properties": {
+        "operation_id": {
+          "title": "Operation Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id"
+      ],
+      "title": "get_ingestion_statusArguments",
+      "type": "object"
+    }
+  },
+  {
+    "name": "get_project_context",
+    "description": "Read project scope, report baseline, unresolved questions and available sources.",
+    "inputSchema": {
+      "properties": {
+        "project_id": {
+          "title": "Project Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "project_id"
+      ],
+      "title": "get_project_contextArguments",
+      "type": "object"
+    }
+  },
+  {
+    "name": "ingest_source",
+    "description": "Submit a public URL to the common archive, preprocessing and publication pipeline.",
+    "inputSchema": {
+      "properties": {
+        "project_id": {
+          "title": "Project Id",
+          "type": "string"
+        },
+        "url": {
+          "title": "Url",
+          "type": "string"
+        },
+        "title": {
+          "default": "",
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "project_id",
+        "url"
+      ],
+      "title": "ingest_sourceArguments",
+      "type": "object"
+    }
+  },
+  {
+    "name": "propose_research_update",
+    "description": "Propose a report revision. Each claim needs text and verified evidence_ids.\n\n    Include target_document_id and base_version together to revise an existing report.\n    Every claims[i].text must appear verbatim in content; paraphrased-only claim lists are rejected.\n    This tool never publishes; the API rejects stale baselines and invalid citations.\n    ",
+    "inputSchema": {
+      "properties": {
+        "project_id": {
+          "title": "Project Id",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "content": {
+          "title": "Content",
+          "type": "string"
+        },
+        "claims": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Claims",
+          "type": "array"
+        },
+        "target_document_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Document Id"
+        },
+        "base_version": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Base Version"
+        }
+      },
+      "required": [
+        "project_id",
+        "title",
+        "content",
+        "claims"
+      ],
+      "title": "propose_research_updateArguments",
+      "type": "object"
+    }
+  },
+  {
+    "name": "read_document",
+    "description": "Read a bounded document/version window or structural block (default 8000 code points).\n\n    Pin returned version for subsequent pages; pass reading_range.next_offset as start.\n    start is document-absolute, including with block_id; omission starts at that block.\n    Canonical block offsets/IDs stay fixed. Cropped text has its own content_hash;\n    canonical_content_hash identifies the full block. For create_evidence start_offset,\n    add text_range.block_start_offset to the quote's offset within returned block text.\n    All offsets count Unicode code points, not bytes or UTF-16 units.\n    ",
+    "inputSchema": {
+      "properties": {
+        "document_id": {
+          "title": "Document Id",
+          "type": "string"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version"
+        },
+        "start": {
+          "anyOf": [
+            {
+              "maximum": 4000000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Start"
+        },
+        "limit": {
+          "default": 8000,
+          "maximum": 32000,
+          "minimum": 1,
+          "title": "Limit",
+          "type": "integer"
+        },
+        "block_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Block Id"
+        }
+      },
+      "required": [
+        "document_id"
+      ],
+      "title": "read_documentArguments",
+      "type": "object"
+    }
+  },
+  {
+    "name": "search_library",
+    "description": "Find published local evidence blocks; results retain immutable version IDs.",
+    "inputSchema": {
+      "properties": {
+        "project_id": {
+          "title": "Project Id",
+          "type": "string"
+        },
+        "query": {
+          "title": "Query",
+          "type": "string"
+        },
+        "limit": {
+          "default": 20,
+          "title": "Limit",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "project_id",
+        "query"
+      ],
+      "title": "search_libraryArguments",
+      "type": "object"
+    }
+  },
+  {
+    "name": "search_web",
+    "description": "Find external leads using the configured search service, not report evidence.",
+    "inputSchema": {
+      "properties": {
+        "query": {
+          "title": "Query",
+          "type": "string"
+        },
+        "limit": {
+          "default": 5,
+          "title": "Limit",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "title": "search_webArguments",
+      "type": "object"
+    }
+  }
+]

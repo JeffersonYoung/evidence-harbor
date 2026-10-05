@@ -1,0 +1,40 @@
+name: evidenceharbor-renderer
+services:
+  renderer:
+    build:
+      context: ../..
+      dockerfile: deploy/renderer/Dockerfile
+    environment:
+      RENDERER_API_KEY: ${RENDERER_API_KEY:?Set renderer-specific secret}
+    networks: [isolated]
+    init: true
+    read_only: true
+    tmpfs: [/tmp:size=256m]
+    shm_size: 256m
+    mem_limit: 1g
+    pids_limit: 256
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+  egress:
+    build:
+      context: ../..
+      dockerfile: deploy/renderer/Dockerfile.proxy
+    networks: [isolated, outside]
+    read_only: true
+    tmpfs: [/tmp:size=16m]
+    mem_limit: 128m
+    pids_limit: 64
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+  gateway:
+    image: nginx:1.28-alpine
+    networks: [isolated, ingress]
+    ports: [127.0.0.1:8088:8080]
+    volumes: [./nginx.conf:/etc/nginx/nginx.conf:ro]
+    depends_on: [renderer]
+    mem_limit: 64m
+networks:
+  isolated:
+    internal: true
+  outside: {}
+  ingress: {}

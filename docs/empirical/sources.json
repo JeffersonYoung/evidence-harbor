@@ -1,0 +1,72 @@
+[
+  {
+    "id": "finance-statement",
+    "domain": "finance",
+    "url": "https://www.federalreserve.gov/newsevents/pressreleases/monetary20260916a.htm",
+    "title": "FOMC September 16 2026 statement",
+    "media_type": "text/html",
+    "sha256": "aed89db5e7ee75c6c4ef1aa22b13e5a2b3f65cff97c9b005c3d7caa4b278e4c4",
+    "bytes": 81698,
+    "captured_at": "2026-10-04T16:21:24.376342+00:00"
+  },
+  {
+    "id": "finance-prior",
+    "domain": "finance",
+    "url": "https://www.federalreserve.gov/newsevents/pressreleases/monetary20260729a.htm",
+    "title": "FOMC July 29 2026 statement",
+    "media_type": "text/html",
+    "sha256": "1943ed835f7bb0327882b17fdb16c28240ce04c58348ad28863caa4762912da8",
+    "bytes": 80275,
+    "captured_at": "2026-10-04T16:21:24.423595+00:00"
+  },
+  {
+    "id": "quant-pbo",
+    "domain": "quant",
+    "url": "https://www.davidhbailey.com/dhbpapers/backtest-prob.pdf",
+    "title": "The Probability of Backtest Overfitting",
+    "media_type": "application/pdf",
+    "sha256": "d8bfbadaaedb430d9dec929646d92f3580fdf18238f34121ae7738fa1c69a63d",
+    "bytes": 1145522,
+    "captured_at": "2026-10-04T16:21:25.390088+00:00"
+  },
+  {
+    "id": "quant-dsr",
+    "domain": "quant",
+    "url": "https://www.davidhbailey.com/dhbpapers/deflated-sharpe.pdf",
+    "title": "The Deflated Sharpe Ratio",
+    "media_type": "application/pdf",
+    "sha256": "ca4a1e834a2954b84eb560776e903329cd9cef318d458aadf6d67bc8166d10b5",
+    "bytes": 1048118,
+    "captured_at": "2026-10-04T16:21:25.459002+00:00"
+  },
+  {
+    "id": "llm-compute",
+    "domain": "llm",
+    "url": "https://arxiv.org/html/2408.03314v1",
+    "title": "Scaling LLM Test-Time Compute Optimally",
+    "media_type": "text/html",
+    "sha256": "a9b93ce1d687a53f5e4348f81434234d17b0bf44541ecbb3a5e5551984e9cd02",
+    "bytes": 227467,
+    "captured_at": "2026-10-04T16:21:28.863350+00:00"
+  },
+  {
+    "id": "llm-s1",
+    "domain": "llm",
+    "url": "https://arxiv.org/html/2501.19393v3",
+    "title": "s1: Simple test-time scaling",
+    "media_type": "text/html",
+    "sha256": "b1f826a70437ebc46143a4222b59ddd24979f5d6010af4a822457b39507c5035",
+    "bytes": 2011055,
+    "captured_at": "2026-10-04T16:21:28.861417+00:00"
+  },
+  {
+    "id": "llm-illusion",
+    "domain": "llm",
+    "url": "https://arxiv.org/html/2506.06941v1",
+    "title": "The Illusion of Thinking",
+    "media_type": "text/html",
+    "sha256": "f70dd34501fc4d33b09743f8c5f8707f35150af03a67514ed261b10537f7a9b9",
+    "bytes": 254631,
+    "captured_at": "2026-10-04T16:21:28.923710+00:00"
+  }
+]

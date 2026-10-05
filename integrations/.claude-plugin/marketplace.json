@@ -1,0 +1,5 @@
+{
+  "name": "evidenceharbor-local",
+  "owner": {"name": "EvidenceHarbor contributors"},
+  "plugins": [{"name": "evidenceharbor", "source": "./agent-plugin", "description": "Evidence-grounded continuous research"}]
+}

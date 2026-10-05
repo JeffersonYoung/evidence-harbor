@@ -1,0 +1,25 @@
+# Declarative registry only: no Python expressions, imports, callbacks or YAML aliases.
+version: 1
+stages:
+  - name: raw_verify
+    options:
+      max_bytes: 26214400
+  - name: extract
+    options:
+      html_parser: auto
+      pdf_parser: auto
+  - name: normalize_privacy
+    options:
+      redact_emails: false
+      redact_phones: false
+  - name: source_map
+    options:
+      max_block_chars: 3000
+  - name: quality
+    options:
+      min_characters: 1
+      min_word_tokens: 1
+      max_replacement_ratio: 0.05
+  - name: lexical_index
+    options:
+      minimum_token_length: 1

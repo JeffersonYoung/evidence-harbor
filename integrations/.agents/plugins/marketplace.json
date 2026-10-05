@@ -1,0 +1,10 @@
+{
+  "name": "evidenceharbor-local",
+  "interface": {"displayName": "EvidenceHarbor"},
+  "plugins": [{
+    "name": "evidenceharbor",
+    "source": {"source": "local", "path": "./agent-plugin"},
+    "policy": {"installation": "AVAILABLE", "authentication": "ON_INSTALL"},
+    "category": "Productivity"
+  }]
+}
